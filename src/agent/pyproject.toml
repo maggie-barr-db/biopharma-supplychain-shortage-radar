@@ -1,0 +1,39 @@
+[project]
+name = "radar-router"
+version = "0.1.0"
+description = "Shortage radar routing agent: two Genie Agents plus a Lakebase propose-mitigation tool"
+requires-python = ">=3.11"
+dependencies = [
+    # Agent Bricks includes the HTTP runtime; this extra adds the openai framework adapter.
+    "databricks-agentbricks[openai]>=0.11.0",
+    "uvicorn>=0.41.0",
+    "python-dotenv>=1.2.1",
+    "databricks-sdk>=0.124.0",
+    "databricks-agents>=1.9.3",
+    "psycopg[binary]>=3.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent", "runtime"]
+
+
+[dependency-groups]
+dev = [
+    "hatchling>=1.28.0",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[project.scripts]
+start-server = "runtime.main:main"

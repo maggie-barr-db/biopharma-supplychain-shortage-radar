@@ -12,6 +12,13 @@ variables:
 include:
   - resources/*.yml
 
+sync:
+  include:
+    - src/app/frontend/dist/**
+  exclude:
+    - src/app/frontend/node_modules/**
+    - src/agent/**
+
 targets:
   dev:
     default: true

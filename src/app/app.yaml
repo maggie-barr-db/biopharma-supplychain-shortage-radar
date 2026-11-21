@@ -1,0 +1,12 @@
+command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+env:
+  - name: CATALOG
+    value: supply_chain
+  - name: WAREHOUSE_ID
+    valueFrom: warehouse
+  - name: GENIE_SUPPLY_EXPOSURE_ID
+    valueFrom: genie_supply_exposure
+  - name: LAKEBASE_ENDPOINT
+    value: projects/shortage-radar/branches/production/endpoints/primary
+  - name: AGENT_URL
+    value: ""

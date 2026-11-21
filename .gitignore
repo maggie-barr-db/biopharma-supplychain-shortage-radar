@@ -5,3 +5,5 @@ notes/
 __pycache__/
 .venv/
 *.secret
+node_modules/
+src/app/frontend/dist/

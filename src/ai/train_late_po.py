@@ -81,13 +81,18 @@ def main():
     w = WorkspaceClient()
     entity = ServedEntityInput(entity_name=f"{a.catalog}.ml.late_po_model", entity_version=str(version),
                                workload_size="Small", scale_to_zero_enabled=True)
-    if any(e.name == a.endpoint for e in w.serving_endpoints.list()):
-        w.serving_endpoints.update_config(name=a.endpoint, served_entities=[entity])
-    else:
-        w.serving_endpoints.create(name=a.endpoint, config=EndpointCoreConfigInput(served_entities=[entity]))
+    from databricks.sdk.errors import ResourceConflict
+    try:
+        if any(e.name == a.endpoint for e in w.serving_endpoints.list()):
+            w.serving_endpoints.update_config(name=a.endpoint, served_entities=[entity])
+        else:
+            w.serving_endpoints.create(name=a.endpoint, config=EndpointCoreConfigInput(name=a.endpoint, served_entities=[entity]))
+        endpoint_status = "updating"
+    except ResourceConflict:
+        endpoint_status = "update already in progress; rerun to serve this version"
 
     summary = {"task": "train_late_po", "mlflow_run_id": run.info.run_id, "model_version": version,
-               "endpoint": a.endpoint, "holdout_start": str(split), **m}
+               "endpoint": a.endpoint, "endpoint_status": endpoint_status, "holdout_start": str(split), **m}
     os.makedirs(f"/Volumes/{a.catalog}/raw/run_log", exist_ok=True)
     with open(f"/Volumes/{a.catalog}/raw/run_log/train_late_po.json", "w") as f:
         json.dump(summary, f, indent=2, default=str)
