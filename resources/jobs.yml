@@ -2,16 +2,99 @@ resources:
   jobs:
     radar_main:
       name: shortage-radar-main
+      description: Signal to impact. File arrival on supplier_quality/ runs it with scenario=none (no generation).
       parameters:
         - name: scenario
-          default: base
+          default: none
+      trigger:
+        pause_status: PAUSED
+        file_arrival:
+          url: /Volumes/${var.catalog}/raw/landing/supplier_quality/
       tasks:
+        - task_key: should_generate
+          condition_task:
+            op: NOT_EQUAL
+            left: "{{job.parameters.scenario}}"
+            right: none
         - task_key: generate
+          depends_on: [{task_key: should_generate, outcome: "true"}]
           spark_python_task:
             python_file: ../src/data/generate.py
             parameters: ["--catalog", "${var.catalog}", "--scenario", "{{job.parameters.scenario}}"]
           environment_key: default
+        - task_key: pipeline
+          depends_on: [{task_key: generate}, {task_key: should_generate, outcome: "false"}]
+          run_if: AT_LEAST_ONE_SUCCESS
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.radar_pipeline.id}
+        - task_key: score_po_risk
+          depends_on: [{task_key: pipeline}]
+          spark_python_task:
+            python_file: ../src/ai/score_po_risk.py
+            parameters: ["--catalog", "${var.catalog}"]
+          environment_key: ml
+        - task_key: refresh_gold
+          depends_on: [{task_key: score_po_risk}]
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.radar_pipeline.id}
       environments:
         - environment_key: default
           spec:
             environment_version: "4"
+        - environment_key: ml
+          spec:
+            environment_version: "4"
+            dependencies: ["mlflow>=3.1", "scikit-learn>=1.5"]
+
+    radar_rebuild:
+      name: shortage-radar-rebuild
+      description: One-command rebuild for a fresh workspace - generate base data, full-refresh the pipeline, train, score, refresh gold.
+      tasks:
+        - task_key: generate
+          spark_python_task:
+            python_file: ../src/data/generate.py
+            parameters: ["--catalog", "${var.catalog}", "--scenario", "base"]
+          environment_key: default
+        - task_key: pipeline_full_refresh
+          depends_on: [{task_key: generate}]
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.radar_pipeline.id}
+            full_refresh: true
+        - task_key: train_late_po
+          depends_on: [{task_key: pipeline_full_refresh}]
+          spark_python_task:
+            python_file: ../src/ai/train_late_po.py
+            parameters: ["--catalog", "${var.catalog}", "--endpoint", "late-po-model"]
+          environment_key: ml
+        - task_key: score_po_risk
+          depends_on: [{task_key: train_late_po}]
+          spark_python_task:
+            python_file: ../src/ai/score_po_risk.py
+            parameters: ["--catalog", "${var.catalog}"]
+          environment_key: ml
+        - task_key: refresh_gold
+          depends_on: [{task_key: score_po_risk}]
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.radar_pipeline.id}
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+        - environment_key: ml
+          spec:
+            environment_version: "4"
+            dependencies: ["mlflow>=3.1", "scikit-learn>=1.5", "databricks-sdk>=0.60"]
+
+    radar_train:
+      name: shortage-radar-train
+      tasks:
+        - task_key: train_late_po
+          spark_python_task:
+            python_file: ../src/ai/train_late_po.py
+            parameters: ["--catalog", "${var.catalog}", "--endpoint", "late-po-model"]
+          environment_key: ml
+      environments:
+        - environment_key: ml
+          spec:
+            environment_version: "4"
+            dependencies: ["mlflow>=3.1", "scikit-learn>=1.5", "databricks-sdk>=0.60"]

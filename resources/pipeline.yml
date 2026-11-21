@@ -1,0 +1,21 @@
+resources:
+  pipelines:
+    radar_pipeline:
+      name: shortage-radar-pipeline
+      catalog: ${var.catalog}
+      schema: bronze
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      configuration:
+        catalog: ${var.catalog}
+        landing: /Volumes/${var.catalog}/raw/landing
+      libraries:
+        - file:
+            path: ../src/pipeline/bronze.sql
+        - file:
+            path: ../src/pipeline/silver.sql
+        - file:
+            path: ../src/pipeline/silver_calc.sql
+        - file:
+            path: ../src/pipeline/gold.sql

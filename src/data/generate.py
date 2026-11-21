@@ -90,6 +90,17 @@ def build_master(rng):
     return vendors, materials, source_list, skus, bom
 
 
+def usage_kg_per_day(skus, bom):
+    """(material_id, site_id) -> kg consumed per day, so stock and orders are sized to real usage."""
+    sku = {s["sku_id"]: s for s in skus}
+    use = {}
+    for b in bom:
+        s = sku[b["sku_id"]]
+        k = (b["material_id"], s["site_id"])
+        use[k] = use.get(k, 0) + s["weekly_demand"] * b["qty_kg_per_unit"] / 7
+    return use
+
+
 def quality_events(rng, vendors, as_of):
     events = []
     for v in vendors:
@@ -113,15 +124,16 @@ def quality_row(rng, v, event_type, d):
             "findingText": findings, "status": "CLOSED" if event_type in ("AUDIT", "CAPA_CLOSED") else rng.choice(["OPEN", "CLOSED"])}
 
 
-def purchase_orders(rng, vendors, source_list, skus, events, as_of):
+def purchase_orders(rng, vendors, source_list, use, events, as_of):
     vend = {v["vendor_id"]: v for v in vendors}
     bad = {}
     for e in events:
         if e["eventType"] in ("FDA_483", "WARNING_LETTER", "IMPORT_ALERT"):
             bad.setdefault(f"V{100000 + int(e['supplierCode'][3:])}", []).append(date.fromisoformat(e["eventDate"]))
-    sites_using = {}
-    for s in skus:
-        sites_using.setdefault(s["site_id"], set())
+    sites_by_mat = {}
+    for (m, site) in sorted(use):
+        sites_by_mat.setdefault(m, []).append(site)
+    source_list = [sl for sl in source_list if sl["material_id"] in sites_by_mat]
     lines, n = [], 0
     start = as_of - timedelta(days=730)
     for day in range(730):
@@ -135,11 +147,12 @@ def purchase_orders(rng, vendors, source_list, skus, events, as_of):
             p_late = (1 - v["reliability"]) + 0.18 * recent_bad + (0.12 if lead < 40 else 0) + (0.08 if v["country"] in ("IN", "CN") else 0)
             delay = rng.randint(8, 45) if rng.random() < min(p_late, 0.9) else rng.randint(-5, 6)
             received = promised + timedelta(days=delay)
-            qty = round(rng.uniform(5, 400), 1)
+            site = rng.choice(sites_by_mat[sl["material_id"]])
+            qty = round(use[(sl["material_id"], site)] * rng.uniform(3, 8), 3)
             grams = rng.random() < 0.03
             n += 1
             lines.append({"po_number": f"45{n // 3:08d}", "po_line": n % 3 + 1, "material_id": sl["material_id"],
-                          "vendor_id": v["vendor_id"], "site_id": rng.choice(sorted(sites_using)),
+                          "vendor_id": v["vendor_id"], "site_id": site,
                           "order_qty": qty * 1000 if grams else qty, "uom": "G" if grams else "KG",
                           "order_date": d.isoformat(), "promised_date": promised.isoformat(),
                           "lead_time_days": "" if (v["created_year"] < 2012 and rng.random() < 0.3) else lead,
@@ -147,9 +160,9 @@ def purchase_orders(rng, vendors, source_list, skus, events, as_of):
     return lines
 
 
-def inventory(rng, skus, bom, as_of):
+def inventory(rng, skus, use, as_of):
     rows = []
-    api_sites = {(b["material_id"], s["site_id"]) for s in skus for b in bom if b["sku_id"] == s["sku_id"] and b["material_id"].startswith("M-API")}
+    api_sites = {k for k in use if k[0].startswith("M-API")}
     for day in range(90):
         d = (as_of - timedelta(days=89 - day)).isoformat()
         for s in skus:
@@ -157,7 +170,7 @@ def inventory(rng, skus, bom, as_of):
                          "on_hand": int(s["weekly_demand"] / 7 * rng.uniform(15, 110)), "uom": "EA"})
         for m, site in sorted(api_sites):
             rows.append({"snapshot_date": d, "site_id": site, "item_id": m, "item_type": "API",
-                         "on_hand": round(rng.uniform(20, 900), 1), "uom": "KG"})
+                         "on_hand": round(use[(m, site)] * rng.uniform(10, 90), 3), "uom": "KG"})
     return rows
 
 
@@ -222,7 +235,8 @@ def main():
         write_csv(f"{root}/erp/source_list/source_list.csv", source_list)
         write_csv(f"{root}/erp/bom/bom.csv", bom)
         write_csv(f"{root}/sku/sku_master.csv", [{k: s[k] for k in s if k != "weekly_demand"} for s in skus])
-        lines = purchase_orders(rng, vendors, source_list, skus, events, as_of)
+        use = usage_kg_per_day(skus, bom)
+        lines = purchase_orders(rng, vendors, source_list, use, events, as_of)
         by_month = {}
         for l in lines:
             by_month.setdefault(l["order_date"][:7], []).append(l)
@@ -230,7 +244,7 @@ def main():
             write_csv(f"{root}/erp/po_lines/po_lines_{m}.csv", rows)
         dupes = rng.sample(lines, len(lines) // 50)
         write_csv(f"{root}/erp/po_lines/po_lines_resend_{a.as_of}.csv", dupes)
-        inv = inventory(rng, skus, bom, as_of)
+        inv = inventory(rng, skus, use, as_of)
         for d in sorted({r["snapshot_date"] for r in inv}):
             write_csv(f"{root}/erp/inventory/inventory_{d}.csv", [r for r in inv if r["snapshot_date"] == d])
         by_q = {}
