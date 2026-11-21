@@ -33,6 +33,16 @@ def sql(stmt, profile):
         f"\n... {len(rows)} rows" if len(rows) > 15 else f"\n({len(rows)} rows)")
 
 
+def excerpt(path, start, end, cap=1600):
+    """Code excerpt from the real source file (start and end markers inclusive), so evidence never drifts from code."""
+    lines = (ROOT / path).read_text().splitlines()
+    i = next(n for n, l in enumerate(lines) if start in l)
+    j = next(n for n, l in enumerate(lines[i:], i) if end in l)
+    block = lines[i:j + 1]
+    pad = min(len(l) - len(l.lstrip()) for l in block if l.strip())
+    return f"# {path}\n" + "\n".join(l[pad:] for l in block)[:cap]
+
+
 def volume_json(path, profile):
     r = subprocess.run(["databricks", "fs", "cat", f"dbfs:/Volumes/{CAT}/raw/run_log/{path}", "--profile", profile],
                        capture_output=True, text=True)
@@ -130,12 +140,19 @@ def ml(a):
     notebook("03_ml", f"**Late-PO model beats the baseline on the time-split holdout:** PR-AUC {train['pr_auc_model']} vs "
              f"{train['pr_auc_baseline']} (lift {train['pr_auc_lift']}, bar 0.05, result: {claim}); recall in top 20% "
              f"{train['recall_top20_model']} vs {train['recall_top20_baseline']}. Scores feed gold.days_of_cover and disruption impact.\n", [
+        ("code: point-in-time features (only what was known at PO creation)",
+         excerpt("src/ai/features.py", "hist AS (", "GROUP BY p.po_number, p.po_line)", 1300), "used by training and scoring"),
+        ("code: time-split holdout, model vs baseline, no-claim rule",
+         excerpt("src/ai/train_late_po.py", "cutoff = as_of", 'm["claim"] =', 1700), "results in the next cell"),
         ("training run (run_log/train_late_po.json)", "-- src/ai/train_late_po.py", json.dumps({k: train[k] for k in ("model_version", "holdout_start", "train_rows", "test_rows", "test_late_rate", "pr_auc_model", "pr_auc_baseline", "pr_auc_lift", "recall_top20_model", "recall_top20_baseline", "claim")})),
         ("scoring run (run_log/score_po_risk.json)", "-- src/ai/score_po_risk.py", score),
         ("serving endpoint state", "databricks serving-endpoints get late-po-model",
          json.dumps({"state": ep.get("state"), "served": [(e.get("entity_name"), e.get("entity_version")) for e in ep.get("config", {}).get("served_entities", [])]})),
         ("endpoint response: risky vs reliable vendor", "databricks serving-endpoints query late-po-model", json.dumps(resp)[:1500]),
         ("model output in the score table", "SELECT ... FROM ml.po_risk_score", effect),
+        ("GenAI code: ai_query prompt and groundedness check",
+         excerpt("src/ai/explain_impact.py", "SELECT *, ai_query(", "supply_gap_days)))) AS explanation,", 900) + "\n\n"
+         + excerpt("src/ai/explain_impact.py", "def grounded(inputs, outputs)", "return found <=", 400), "result in the next cell"),
         ("GenAI: ai_query explanations + groundedness (run_log/explain_impact.json)", "-- src/ai/explain_impact.py",
          (lambda d: json.dumps({"llm": d["llm"], "explanations": d["explanations"], "grounded": d["grounded"], "sample": d["sample"][0]}))(json.loads(volume_json("explain_impact.json", a.profile)))),
     ])
@@ -147,6 +164,10 @@ def lakebase(a):
     # Connect as a service principal login without BYPASSRLS (the pattern the app uses: SP login + app.user).
     with connect(a.planner_profile) as conn, conn.cursor() as cur:
         cur.execute("SELECT current_user, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+        out.append(("code: approval rules and region RLS (src/serve/lakebase_setup.sql)",
+                    excerpt("src/serve/lakebase_setup.sql", "CREATE OR REPLACE FUNCTION decisions.fn_check_decision", "END $$;", 1100) + "\n\n"
+                    + excerpt("src/serve/lakebase_setup.sql", "CREATE POLICY region_access", "AND (e.region = '*' OR e.region = mitigation_action.region)));", 500),
+                    "tests below run against this"))
         out.append(("connected as a service principal role without BYPASSRLS", "SELECT current_user, rolbypassrls", json.dumps(cur.fetchall())))
 
         def q(title, stmt, user):
@@ -197,6 +218,11 @@ def app(a):
     ask = json.loads(call("/api/ask", {"question": "Which SKUs run out first in the current disruption?"}))
     notebook("06_app", f"**The app serves all four screens as the signed-in user** ({base}). Radar shows {len(dis)} active disruptions; "
              f"Impact lists the SKUs for {did}; Approvals reads the Lakebase workflow; Ask answered in {ask.get('seconds')} s via {ask.get('route')}.\n", [
+        ("code: every request runs as the signed-in user; Lakebase via app SP + app.user",
+         excerpt("src/app/backend/main.py", "def user_ctx(req: Request)", "return WorkspaceClient(host=HOST", 500) + "\n\n"
+         + excerpt("src/app/backend/main.py", "def pg(email: str)", "conn.execute(\"SELECT set_config('app.user'", 600), "responses below"),
+        ("code: Ask forwards the user's token to the routing agent",
+         excerpt("src/app/backend/main.py", "if AGENT_URL:", 'headers={"Authorization": f"Bearer {token}"})', 700), "Ask response at the end"),
         ("Radar: who am I (entitlements)", "GET /api/me", call("/api/me")),
         ("Radar: KPIs from the metric view", "GET /api/kpis", call("/api/kpis")),
         ("Radar: active disruptions", "GET /api/disruptions", json.dumps(dis)[:900]),
