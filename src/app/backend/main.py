@@ -101,7 +101,7 @@ def actions(req: Request):
     with pg(email) as conn:
         cur = conn.execute("""SELECT action_id, disruption_id, sku_id, region, action_type, description, est_revenue_protected,
             proposed_by, proposed_source, on_behalf_of, proposed_at, status, decided_by, decided_at, decision_rationale
-            FROM ops.mitigation_action ORDER BY action_id DESC LIMIT 100""")
+            FROM decisions.mitigation_action ORDER BY action_id DESC LIMIT 100""")
         cols = [d.name for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -120,7 +120,7 @@ def propose(p: Proposal, req: Request):
     _, email, _ = user_ctx(req)
     try:
         with pg(email) as conn:
-            row = conn.execute("""INSERT INTO ops.mitigation_action (disruption_id, sku_id, region, action_type, description,
+            row = conn.execute("""INSERT INTO decisions.mitigation_action (disruption_id, sku_id, region, action_type, description,
                 est_revenue_protected, proposed_by, proposed_source) VALUES (%s,%s,%s,%s,%s,%s,%s,'PLANNER') RETURNING action_id""",
                 (p.disruption_id, p.sku_id, p.region, p.action_type, p.description, p.est_revenue_protected, email)).fetchone()
     except psycopg.Error as e:
@@ -140,7 +140,7 @@ def decide(action_id: int, d: Decision, req: Request):
         raise HTTPException(400, "status must be APPROVED or REJECTED")
     try:
         with pg(email) as conn:
-            n = conn.execute("UPDATE ops.mitigation_action SET status = %s, decision_rationale = %s WHERE action_id = %s",
+            n = conn.execute("UPDATE decisions.mitigation_action SET status = %s, decision_rationale = %s WHERE action_id = %s",
                              (d.status, d.rationale, action_id)).rowcount
     except psycopg.Error as e:  # approval trigger: entitlement, segregation of duties, rationale
         raise HTTPException(403, str(e).splitlines()[0])
@@ -153,10 +153,10 @@ def decide(action_id: int, d: Decision, req: Request):
 def audit(action_id: int, req: Request):
     _, email, _ = user_ctx(req)
     with pg(email) as conn:
-        visible = conn.execute("SELECT 1 FROM ops.mitigation_action WHERE action_id = %s", (action_id,)).fetchone()
+        visible = conn.execute("SELECT 1 FROM decisions.mitigation_action WHERE action_id = %s", (action_id,)).fetchone()
         if not visible:
             raise HTTPException(404, "action not found or not visible to you")
-        rows = conn.execute("SELECT audit_id, event, actor, at FROM ops.audit_log WHERE action_id = %s ORDER BY audit_id",
+        rows = conn.execute("SELECT audit_id, event, actor, at FROM decisions.audit_log WHERE action_id = %s ORDER BY audit_id",
                             (action_id,)).fetchall()
     return [{"audit_id": a, "event": e, "actor": ac, "at": str(t)} for a, e, ac, t in rows]
 

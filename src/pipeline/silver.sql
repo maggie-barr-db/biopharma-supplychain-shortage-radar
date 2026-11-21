@@ -79,3 +79,20 @@ FROM ${catalog}.silver.forecast_ranked WHERE pub_rank = 1;
 CREATE OR REFRESH MATERIALIZED VIEW ${catalog}.silver.forecast_quarantine COMMENT "Negative forecast quantities held for planner review"
 AS SELECT sku_id, region, week_start, forecast_units, published_at, _source_file, 'NEGATIVE_FORECAST' AS reason
 FROM ${catalog}.silver.forecast_ranked WHERE pub_rank = 1 AND forecast_units < 0;
+
+CREATE OR REFRESH MATERIALIZED VIEW ${catalog}.silver.source_freshness (
+  CONSTRAINT feed_on_time EXPECT (status = 'ON_TIME'))
+COMMENT "One row per source feed: latest business date vs the as-of date and the expected cadence (warn and track late or missing feeds)"
+AS WITH asof AS (SELECT max(snapshot_date) AS d FROM ${catalog}.silver.inventory),
+feeds AS (
+  SELECT 'erp_inventory' AS feed, max(snapshot_date) AS latest, 1 AS max_age_days, count(DISTINCT snapshot_date) AS periods_last_7d_or_wk
+    FROM ${catalog}.silver.inventory WHERE snapshot_date > (SELECT date_sub(d, 7) FROM asof)
+  UNION ALL SELECT 'erp_po_lines', max(order_date), 3, NULL FROM ${catalog}.silver.po_line
+  UNION ALL SELECT 'demand_forecast', max(published_at), 8, NULL FROM ${catalog}.silver.forecast
+  UNION ALL SELECT 'supplier_quality', max(event_date), 30, NULL FROM ${catalog}.silver.supplier_event)
+SELECT f.feed, f.latest, f.max_age_days, datediff(a.d, f.latest) AS age_days, f.periods_last_7d_or_wk,
+  CASE WHEN f.latest IS NULL THEN 'MISSING'
+       WHEN datediff(a.d, f.latest) > f.max_age_days THEN 'LATE'
+       WHEN f.feed = 'erp_inventory' AND f.periods_last_7d_or_wk < 7 THEN 'GAP'
+       ELSE 'ON_TIME' END AS status
+FROM feeds f CROSS JOIN asof a;

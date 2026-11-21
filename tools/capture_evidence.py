@@ -58,14 +58,14 @@ def notebook(name, headline, cells):
 def pipeline(a):
     gen = json.loads(volume_json("generate_base.json", a.profile))
     pid = cli(["pipelines", "list-pipelines", "--filter", "name LIKE 'shortage-radar-pipeline'"], a.profile)[0]["pipeline_id"]
-    dq_sql = f"""WITH ev AS (SELECT origin.update_id AS update_id, timestamp,
+    dq_sql = f"""WITH ev AS (SELECT timestamp,
         from_json(details:flow_progress.data_quality.expectations, 'array<struct<name:string,dataset:string,passed_records:bigint,failed_records:bigint>>') AS exp
       FROM event_log('{pid}') WHERE event_type = 'flow_progress' AND details:flow_progress.data_quality.expectations IS NOT NULL),
-    latest AS (SELECT update_id FROM ev ORDER BY timestamp DESC LIMIT 1)
-    SELECT e.name AS expectation, replace(e.dataset, '{CAT}.', '') AS dataset,
-      CASE e.name WHEN 'po_key' THEN 'FAIL UPDATE' WHEN 'vendor_key' THEN 'FAIL UPDATE' WHEN 'non_negative' THEN 'DROP ROW' ELSE 'WARN' END AS on_violation,
-      e.passed_records AS passed, e.failed_records AS failed
-    FROM ev JOIN latest USING (update_id) LATERAL VIEW explode(exp) t AS e ORDER BY dataset, expectation"""
+    flat AS (SELECT timestamp, e.* FROM ev LATERAL VIEW explode(exp) t AS e WHERE e.passed_records + e.failed_records > 0)
+    SELECT name AS expectation, replace(dataset, '{CAT}.', '') AS dataset,
+      CASE WHEN name IN ('po_key', 'vendor_key') THEN 'FAIL UPDATE' WHEN name = 'non_negative' THEN 'DROP ROW' ELSE 'WARN' END AS on_violation,
+      max_by(passed_records, timestamp) AS passed, max_by(failed_records, timestamp) AS failed, max(timestamp) AS last_checked
+    FROM flat GROUP BY name, dataset ORDER BY dataset, expectation"""
     counts = sql(f"""SELECT 'bronze.po_line' t, count(*) n FROM {CAT}.bronze.po_line UNION ALL SELECT 'silver.po_line', count(*) FROM {CAT}.silver.po_line
       UNION ALL SELECT 'silver.po_line_quarantine (duplicates)', count(*) FROM {CAT}.silver.po_line_quarantine
       UNION ALL SELECT 'silver.po_line lead time filled', count_if(lead_time_source='SOURCE_LIST') FROM {CAT}.silver.po_line
@@ -77,7 +77,12 @@ def pipeline(a):
              f"{gen['po_lines_in_grams']} lines in grams and {gen['negative_forecasts']} negative forecasts; the pipeline quarantined the duplicates and "
              "negatives, filled missing lead times from the source list and matched every supplier quality code to an ERP vendor.\n", [
         ("generator run summary (run_log/generate_base.json)", "-- src/data/generate.py", json.dumps(gen, indent=1)),
-        ("pipeline expectations, latest update (from the pipeline event log)", "SELECT ... FROM event_log(<pipeline_id>)", sql(dq_sql, a.profile)),
+        ("pipeline expectations, most recent check per rule (from the pipeline event log)", "SELECT ... FROM event_log(<pipeline_id>)", sql(dq_sql, a.profile)),
+        ("schema contract: an unexpected field is rescued, not added (test file with inspectorName)",
+         f"SELECT supplierCode, _rescued_data FROM {CAT}.bronze.supplier_event WHERE _rescued_data IS NOT NULL",
+         sql(f"SELECT supplierCode, eventType, _rescued_data FROM {CAT}.bronze.supplier_event WHERE _rescued_data IS NOT NULL", a.profile)),
+        ("feed freshness vs expected cadence (warn and track late or missing feeds)", f"SELECT * FROM {CAT}.silver.source_freshness",
+         sql(f"SELECT feed, latest, max_age_days, age_days, status FROM {CAT}.silver.source_freshness ORDER BY feed", a.profile)),
         ("row counts and data quality by layer", "SELECT ... FROM bronze/silver/gold", counts),
         ("supplier code conformance", f"SELECT match_method, count(*) FROM {CAT}.silver.supplier_xref GROUP BY 1",
          sql(f"SELECT match_method, count(*) n FROM {CAT}.silver.supplier_xref GROUP BY 1", a.profile)),
@@ -154,22 +159,25 @@ def lakebase(a):
                 out.append((f"{title} [app.user={user}]", stmt, f"ERROR (expected): {str(e).splitlines()[0]}"))
         ex, eu = "maggie.barrett@databricks.com", "7739855e-67af-424e-a487-b03d30433d3a"
         q("synced tables from UC", "SELECT (SELECT count(*) FROM ops.disruption_impact) AS impact_rows, (SELECT count(*) FROM ops.user_entitlement) AS entitlements", ex)
-        q("planner proposes for EU", "INSERT INTO ops.mitigation_action (disruption_id, sku_id, region, action_type, description, proposed_by, proposed_source) "
+        q("planner proposes for EU", "INSERT INTO decisions.mitigation_action (disruption_id, sku_id, region, action_type, description, proposed_by, proposed_source) "
           "SELECT disruption_id, sku_id, region, 'REALLOCATE_INVENTORY', 'Evidence test: move 4 weeks of EU stock', '" + eu + "', 'PLANNER' "
           "FROM ops.disruption_impact WHERE region = 'EU' ORDER BY supply_gap_days DESC LIMIT 1 RETURNING action_id, region, status", eu)
-        q("planner tries to propose for US (RLS WITH CHECK)", "INSERT INTO ops.mitigation_action (disruption_id, region, action_type, description, proposed_by, proposed_source) "
+        q("planner tries to propose for US (RLS WITH CHECK)", "INSERT INTO decisions.mitigation_action (disruption_id, region, action_type, description, proposed_by, proposed_source) "
           "VALUES ('test', 'US', 'ALLOCATE_DEMAND', 'should be blocked', '" + eu + "', 'PLANNER')", eu)
-        q("planner sees only EU actions", "SELECT region, count(*) FROM ops.mitigation_action GROUP BY region", eu)
-        q("planner tries to approve (not entitled)", "UPDATE ops.mitigation_action SET status='APPROVED', decision_rationale='x' WHERE status='PROPOSED' AND region='EU'", eu)
-        q("approval without rationale", "UPDATE ops.mitigation_action SET status='APPROVED' WHERE status='PROPOSED' AND region='EU'", ex)
-        q("exec approves with rationale", "UPDATE ops.mitigation_action SET status='APPROVED', decision_rationale='Stock exists in EU-DE1; approved for 4 weeks' "
-          "WHERE action_id = (SELECT max(action_id) FROM ops.mitigation_action WHERE status='PROPOSED' AND region='EU') RETURNING action_id, status, decided_by", ex)
-        q("audit trail is append-only", "DELETE FROM ops.audit_log", ex)
-        q("decisions cannot be deleted", "DELETE FROM ops.mitigation_action", ex)
-        q("audit trail", "SELECT action_id, event, actor, at FROM ops.audit_log ORDER BY audit_id DESC LIMIT 6", ex)
+        q("planner sees only EU actions", "SELECT region, count(*) FROM decisions.mitigation_action GROUP BY region", eu)
+        q("planner tries to approve (not entitled)", "UPDATE decisions.mitigation_action SET status='APPROVED', decision_rationale='x' WHERE status='PROPOSED' AND region='EU'", eu)
+        q("approval without rationale", "UPDATE decisions.mitigation_action SET status='APPROVED' WHERE status='PROPOSED' AND region='EU'", ex)
+        q("exec approves with rationale", "UPDATE decisions.mitigation_action SET status='APPROVED', decision_rationale='Stock exists in EU-DE1; approved for 4 weeks' "
+          "WHERE action_id = (SELECT max(action_id) FROM decisions.mitigation_action WHERE status='PROPOSED' AND region='EU') RETURNING action_id, status, decided_by", ex)
+        q("audit trail is append-only", "DELETE FROM decisions.audit_log", ex)
+        q("decisions cannot be deleted", "DELETE FROM decisions.mitigation_action", ex)
+        q("audit trail", "SELECT action_id, event, actor, at FROM decisions.audit_log ORDER BY audit_id DESC LIMIT 6", ex)
+    out.append(("decisions land back in governed Delta (as of the last land_decisions job run)", f"SELECT ... FROM {CAT}.gold.mitigation_decision",
+                sql(f"SELECT action_id, region, action_type, status, decided_by FROM {CAT}.gold.mitigation_decision ORDER BY action_id", a.profile)
+                + "\n" + volume_json("land_decisions.json", a.profile)))
     notebook("04_lakebase", "**Operational write path with Part 11-style controls.** Planners propose, entitled approvers decide with a rationale, "
              "no one approves their own proposal, every change lands in an append-only audit log, decisions cannot be deleted, and Postgres RLS "
-             "mirrors the UC region rules (an EU planner cannot write or see US actions).\n", out)
+             "mirrors the UC region rules (an EU planner cannot write or see US actions). Decisions land back in Delta (gold.mitigation_decision) under the same region filter.\n", out)
 
 
 def app(a):

@@ -49,6 +49,12 @@ resources:
             python_file: ../src/serve/sync_lakebase.py
             parameters: ["--catalog", "${var.catalog}"]
           environment_key: default
+        - task_key: land_decisions
+          depends_on: [{task_key: sync_lakebase}]
+          spark_python_task:
+            python_file: ../src/serve/land_decisions.py
+            parameters: ["--catalog", "${var.catalog}"]
+          environment_key: lake
       environments:
         - environment_key: default
           spec:
@@ -57,6 +63,10 @@ resources:
           spec:
             environment_version: "4"
             dependencies: ["mlflow>=3.1", "scikit-learn>=1.5"]
+        - environment_key: lake
+          spec:
+            environment_version: "4"
+            dependencies: ["psycopg[binary]>=3.2", "databricks-sdk>=0.70"]
 
     radar_rebuild:
       name: shortage-radar-rebuild
@@ -100,6 +110,12 @@ resources:
             python_file: ../src/serve/sync_lakebase.py
             parameters: ["--catalog", "${var.catalog}"]
           environment_key: default
+        - task_key: land_decisions
+          depends_on: [{task_key: sync_lakebase}]
+          spark_python_task:
+            python_file: ../src/serve/land_decisions.py
+            parameters: ["--catalog", "${var.catalog}"]
+          environment_key: lake
       environments:
         - environment_key: default
           spec:
@@ -108,6 +124,10 @@ resources:
           spec:
             environment_version: "4"
             dependencies: ["mlflow>=3.1", "scikit-learn>=1.5", "databricks-sdk>=0.60"]
+        - environment_key: lake
+          spec:
+            environment_version: "4"
+            dependencies: ["psycopg[binary]>=3.2", "databricks-sdk>=0.70"]
 
     radar_train:
       name: shortage-radar-train

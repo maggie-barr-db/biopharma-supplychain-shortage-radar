@@ -1,12 +1,14 @@
 -- P06 Lakebase (Postgres) setup for the mitigation workflow. Idempotent.
 -- Synced (read-only, from UC): ops.disruption_impact <- silver.impact_base, ops.user_entitlement <- governance.user_entitlement
--- Native (read-write, owned here): ops.mitigation_action, ops.audit_log
+-- Native (read-write, owned here): decisions.mitigation_action, decisions.audit_log. They live in their own schema
+-- because a Lakebase change data feed replicates a whole Postgres schema back to Delta (see lakebase_cdf.md in BUILD_LOG).
 -- UC row filters and masks do not reach Lakebase, so the same entitlement rules are enforced here with
 -- Postgres RLS. The app connects as its service principal and sets app.user to the signed-in (OBO) user.
 
 CREATE SCHEMA IF NOT EXISTS ops;
+CREATE SCHEMA IF NOT EXISTS decisions;
 
-CREATE TABLE IF NOT EXISTS ops.mitigation_action (
+CREATE TABLE IF NOT EXISTS decisions.mitigation_action (
   action_id BIGSERIAL PRIMARY KEY,
   disruption_id TEXT NOT NULL,
   sku_id TEXT,
@@ -24,7 +26,7 @@ CREATE TABLE IF NOT EXISTS ops.mitigation_action (
   decided_at TIMESTAMPTZ,
   decision_rationale TEXT);
 
-CREATE TABLE IF NOT EXISTS ops.audit_log (
+CREATE TABLE IF NOT EXISTS decisions.audit_log (
   audit_id BIGSERIAL PRIMARY KEY,
   action_id BIGINT NOT NULL,
   event TEXT NOT NULL,
@@ -33,7 +35,7 @@ CREATE TABLE IF NOT EXISTS ops.audit_log (
   details JSONB NOT NULL);
 
 -- Approval rules (Part 11 style): named, entitled approver; no self-approval; rationale required.
-CREATE OR REPLACE FUNCTION ops.fn_check_decision() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION decisions.fn_check_decision() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE who TEXT := current_setting('app.user', true);
 BEGIN
   IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
@@ -49,28 +51,28 @@ BEGIN
   RETURN NEW;
 END $$;
 
-CREATE OR REPLACE FUNCTION ops.fn_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION decisions.fn_audit() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  INSERT INTO ops.audit_log (action_id, event, actor, details)
+  INSERT INTO decisions.audit_log (action_id, event, actor, details)
   VALUES (NEW.action_id, TG_OP || ':' || NEW.status, current_setting('app.user', true), to_jsonb(NEW));
   RETURN NEW;
 END $$;
 
-CREATE OR REPLACE FUNCTION ops.fn_audit_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION decisions.fn_audit_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'audit_log is append-only'; END $$;
 
-DROP TRIGGER IF EXISTS trg_check_decision ON ops.mitigation_action;
-CREATE TRIGGER trg_check_decision BEFORE UPDATE ON ops.mitigation_action FOR EACH ROW EXECUTE FUNCTION ops.fn_check_decision();
-DROP TRIGGER IF EXISTS trg_audit ON ops.mitigation_action;
-CREATE TRIGGER trg_audit AFTER INSERT OR UPDATE ON ops.mitigation_action FOR EACH ROW EXECUTE FUNCTION ops.fn_audit();
-DROP TRIGGER IF EXISTS trg_audit_immutable ON ops.audit_log;
-CREATE TRIGGER trg_audit_immutable BEFORE UPDATE OR DELETE ON ops.audit_log FOR EACH ROW EXECUTE FUNCTION ops.fn_audit_immutable();
+DROP TRIGGER IF EXISTS trg_check_decision ON decisions.mitigation_action;
+CREATE TRIGGER trg_check_decision BEFORE UPDATE ON decisions.mitigation_action FOR EACH ROW EXECUTE FUNCTION decisions.fn_check_decision();
+DROP TRIGGER IF EXISTS trg_audit ON decisions.mitigation_action;
+CREATE TRIGGER trg_audit AFTER INSERT OR UPDATE ON decisions.mitigation_action FOR EACH ROW EXECUTE FUNCTION decisions.fn_audit();
+DROP TRIGGER IF EXISTS trg_audit_immutable ON decisions.audit_log;
+CREATE TRIGGER trg_audit_immutable BEFORE UPDATE OR DELETE ON decisions.audit_log FOR EACH ROW EXECUTE FUNCTION decisions.fn_audit_immutable();
 
 -- Region RLS on the workflow table, mirroring governance.region_filter in UC. FORCE so the owner is filtered too.
-ALTER TABLE ops.mitigation_action ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ops.mitigation_action FORCE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS region_access ON ops.mitigation_action;
-CREATE POLICY region_access ON ops.mitigation_action
+ALTER TABLE decisions.mitigation_action ENABLE ROW LEVEL SECURITY;
+ALTER TABLE decisions.mitigation_action FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS region_access ON decisions.mitigation_action;
+CREATE POLICY region_access ON decisions.mitigation_action
   USING (EXISTS (SELECT 1 FROM ops.user_entitlement e WHERE e.principal = current_setting('app.user', true)
                  AND (e.region = '*' OR e.region = mitigation_action.region)))
   WITH CHECK (EXISTS (SELECT 1 FROM ops.user_entitlement e WHERE e.principal = current_setting('app.user', true)
@@ -87,7 +89,7 @@ FROM ops.disruption_impact d
 JOIN ops.user_entitlement e ON e.principal = current_setting('app.user', true) AND (e.region = '*' OR e.region = d.region);
 
 -- Decisions are never deleted (Part 11 style); corrections are new rows with their own audit entries.
-CREATE OR REPLACE FUNCTION ops.fn_no_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION decisions.fn_no_delete() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'mitigation actions cannot be deleted'; END $$;
-DROP TRIGGER IF EXISTS trg_no_delete ON ops.mitigation_action;
-CREATE TRIGGER trg_no_delete BEFORE DELETE ON ops.mitigation_action FOR EACH ROW EXECUTE FUNCTION ops.fn_no_delete();
+DROP TRIGGER IF EXISTS trg_no_delete ON decisions.mitigation_action;
+CREATE TRIGGER trg_no_delete BEFORE DELETE ON decisions.mitigation_action FOR EACH ROW EXECUTE FUNCTION decisions.fn_no_delete();

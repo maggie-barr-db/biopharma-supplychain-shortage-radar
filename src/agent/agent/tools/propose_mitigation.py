@@ -1,5 +1,5 @@
 """propose_mitigation: the agent's only write action. It records a PROPOSED mitigation in Lakebase
-(ops.mitigation_action) for a human approver; it can never approve. The row is written by the agent's
+(decisions.mitigation_action) for a human approver; it can never approve. The row is written by the agent's
 service principal on behalf of the requesting user: app.user is set to that user, so Postgres RLS only
 lets the agent propose for regions the user is entitled to, and the audit trigger records both names.
 """
@@ -54,7 +54,7 @@ def make_propose_mitigation(client_for: Callable[[str], WorkspaceClient] | None)
             cur.execute("SELECT set_config('app.user', %s, false)", (user,))
             try:
                 cur.execute(
-                    """INSERT INTO ops.mitigation_action (disruption_id, sku_id, region, action_type, description,
+                    """INSERT INTO decisions.mitigation_action (disruption_id, sku_id, region, action_type, description,
                          est_revenue_protected, proposed_by, proposed_source, on_behalf_of)
                        VALUES (%s, %s, %s, %s, %s, %s, 'agent:radar-router', 'AGENT', %s) RETURNING action_id""",
                     (disruption_id, sku_id, region, action_type, description, est_revenue_protected, user))
