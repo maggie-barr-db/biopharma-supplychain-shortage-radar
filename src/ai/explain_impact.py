@@ -45,14 +45,14 @@ def allowed_numbers(row):
     vals = set()
     for k in ("weekly_units", "cover_days_before", "cover_days_without_vendor", "requalification_days", "supply_gap_days"):
         v = float(row[k])
-        vals |= {f"{v:g}", f"{round(v):g}", f"{v:.1f}", f"{int(v):,}"}
+        vals |= {f"{v:g}", f"{round(v):g}", f"{v:.1f}", f"{int(v):,}", f"{int(v)}"}
     vals |= set(NUM.findall(f"{row['projected_stockout_date']} {row['sku_id']} {row['api_id']} {row['site_id']} {row['drug']}"))
     return vals
 
 
 def grounded(inputs, outputs) -> bool:
     """True when every number in the explanation appears in the source row."""
-    found = {n.rstrip(".") for n in NUM.findall(outputs)}
+    found = {n.rstrip(".,") for n in NUM.findall(outputs)}  # drop trailing sentence punctuation
     return found <= inputs["allowed"]
 
 

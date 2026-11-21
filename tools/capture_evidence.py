@@ -115,6 +115,8 @@ def ml(a):
          json.dumps({"state": ep.get("state"), "served": [(e.get("entity_name"), e.get("entity_version")) for e in ep.get("config", {}).get("served_entities", [])]})),
         ("endpoint response: risky vs reliable vendor", "databricks serving-endpoints query late-po-model", json.dumps(resp)[:1500]),
         ("model output in the score table", "SELECT ... FROM ml.po_risk_score", effect),
+        ("GenAI: ai_query explanations + groundedness (run_log/explain_impact.json)", "-- src/ai/explain_impact.py",
+         volume_json("explain_impact.json", a.profile)[:2200]),
     ])
 
 
@@ -152,6 +154,32 @@ def lakebase(a):
     notebook("04_lakebase", "**Operational write path with Part 11-style controls.** Planners propose, entitled approvers decide with a rationale, "
              "no one approves their own proposal, every change lands in an append-only audit log, decisions cannot be deleted, and Postgres RLS "
              "mirrors the UC region rules (an EU planner cannot write or see US actions).\n", out)
+
+
+def app(a):
+    import urllib.request
+    base = cli(["apps", "get", "shortage-radar"], a.profile)["url"].rstrip("/")
+    token = cli(["auth", "token"], a.profile)["access_token"]
+
+    def call(path, body=None):
+        req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body else None, method="POST" if body else "GET",
+                                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+        try:
+            return json.dumps(json.loads(urllib.request.urlopen(req, timeout=280).read()), default=str)
+        except Exception as e:  # noqa: BLE001
+            return f"ERROR: {e}"
+    dis = json.loads(call("/api/disruptions"))
+    did = dis[0]["disruption_id"] if dis else ""
+    ask = json.loads(call("/api/ask", {"question": "Which SKUs run out first in the current disruption?"}))
+    notebook("06_app", f"**The app serves all four screens as the signed-in user** ({base}). Radar shows {len(dis)} active disruptions; "
+             f"Impact lists the SKUs for {did}; Approvals reads the Lakebase workflow; Ask answered in {ask.get('seconds')} s via {ask.get('route')}.\n", [
+        ("Radar: who am I (entitlements)", "GET /api/me", call("/api/me")),
+        ("Radar: KPIs from the metric view", "GET /api/kpis", call("/api/kpis")),
+        ("Radar: active disruptions", "GET /api/disruptions", json.dumps(dis)[:1200]),
+        ("Impact: SKUs for the top disruption", f"GET /api/disruptions/{did}", call(f"/api/disruptions/{did}")[:1500]),
+        ("Approvals: Lakebase workflow", "GET /api/actions", call("/api/actions")[:1200]),
+        ("Ask", "POST /api/ask", json.dumps(ask)[:1500]),
+    ])
 
 
 if __name__ == "__main__":

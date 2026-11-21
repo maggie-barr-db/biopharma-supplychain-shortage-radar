@@ -61,7 +61,7 @@
      "Days of cover means total_cover_days in gold.days_of_cover (finished goods plus API at the site). Use the metric view gold.mv_supply_kpis for KPI aggregates when it fits.",
      "Single-source means single_source = true (only one approved vendor for the API).",
      "A current or active disruption is any row in gold.disruption_impact. Revenue at risk is revenue_at_risk in that table; supply gap days is supply_gap_days.",
-     "Revenue, price and revenue at risk are confidential. If these columns come back NULL the user is not entitled to commercial values: say so plainly and answer in units and days instead.",
+     "Revenue, price and revenue at risk are confidential. Never wrap annual_revenue, net_price or revenue_at_risk in COALESCE, IFNULL or NVL, and never show 0 for them. If they come back NULL the user is not entitled to commercial values: say so plainly and answer in units and days instead.",
      "Regions are US, EU and APAC. Always show drug and sku_id together so planners can act."
     ]
    }

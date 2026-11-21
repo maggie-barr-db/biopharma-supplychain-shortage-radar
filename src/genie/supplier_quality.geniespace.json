@@ -96,7 +96,7 @@
      {
       "format": "SQL",
       "content": [
-       "SELECT vendor_id, vendor_name, on_time_rate_12m FROM supply_chain.gold.supplier_risk ORDER BY on_time_rate_12m LIMIT 1"
+       "SELECT vendor_id, vendor_name, on_time_rate_12m FROM supply_chain.gold.supplier_risk WHERE on_time_rate_12m IS NOT NULL ORDER BY on_time_rate_12m LIMIT 1"
       ]
      }
     ]
