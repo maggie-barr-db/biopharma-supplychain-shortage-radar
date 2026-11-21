@@ -13,53 +13,25 @@ An FDA Warning Letter lands for supplier V100103 (Larchmont Synthesis). Within o
 - **$30.0M revenue at risk** of $187M annual revenue exposed; the VP sees it, planners see units and days only.
 - The routing agent answers "which products are exposed to the supplier that just got a warning letter?" by asking the Supplier Quality agent first and the Supply Exposure agent second, then proposes a mitigation that a supply executive must approve.
 
-**About $7.8M a year (estimate for a fictional company).** BioChain's baseline is an assumption: last year one API disruption cost $18M in lost revenue and $1.5M in expedite and spot buys. The estimate assumes the radar cuts stockout days by 40% and expedite premiums by 30%, plus planner time (assumptions next to each number in USE_CASE.md section 6). The pattern is real:
-- FDA's 2022 inspection of Intas Pharmaceuticals found data-integrity failures; production stopped and the US ran short of cisplatin and carboplatin in 2023 (FDA Warning Letter 320-23-20, July 28, 2023).
-- 62% of drugs that went into shortage in 2013-2017 were tied to manufacturing or quality problems (FDA, *Drug Shortages: Root Causes and Potential Solutions*, 2019).
-- Sales volume fell 28-35% after a shortage (ASPE Report to Congress, May 2023), and shortages cost US hospitals nearly $900M a year in labor (Vizient, 2025).
+**About $7.8M a year (estimate for a fictional company)**, from fewer stockout days, lower expedite cost and planner time. The baseline and each assumption, and the real FDA, ASHP, ASPE and Vizient sources behind the problem, are in USE_CASE.md (sections 2 and 6).
 
-## Who it is for
+## How it works
 
-| Persona | Question they bring | What they get |
-|---|---|---|
-| VP Supply Chain (sponsor) | How much revenue is at risk and are we on top of it? | Revenue at risk, single-source exposure, approved decisions with an audit trail |
-| Supply Planning Lead (owner) | Which SKUs run out first and what do we do? | Days of cover with risk-adjusted inbound, stockout dates, a place to propose actions |
+Synthetic ERP, supplier quality and forecast files land in a UC volume; Lakeflow builds bronze, silver and a governed gold layer; a late-PO model's scores change days of cover; `ai_query` explains each at-risk SKU; Lakebase runs the mitigation workflow and decisions land back in Delta; two Genie Agents and a routing agent answer questions; a React app runs it all as the signed-in user. **VALIDATION.md** maps every stage to its code and evidence; `evidence/` holds the outputs.
 
-## How it works (one connected journey)
+## Decisions a technical buyer will ask about
 
-```
-synthetic ERP + supplier quality + forecast files (UC volume)
-  -> Lakeflow SDP (Auto Loader, expectations, quarantine)  bronze -> silver -> gold
-  -> Unity Catalog: published gold layer with region row filter and commercial column masks
-  -> ML: late-PO model (MLflow, UC registry, serving endpoint) scores open POs -> feeds days of cover
-  -> GenAI: ai_query impact explanations; routing agent (Agent Bricks CLI) over two Genie Agents
-  -> Lakebase: synced impact + entitlements; native mitigation workflow with RLS, approval rules, audit log; decisions land back in Delta
-  -> Databricks App (FastAPI + React), on behalf of the signed-in user: Radar, Impact, Approvals, Ask
-```
-
-Each stage reads the previous one: the model's scores change gold days of cover, gold impact is synced into Lakebase, the app and agent write decisions back to Lakebase, and Genie answers from the governed gold layer.
-
-## Where the proof is
-
-See **VALIDATION.md** for stage -> file -> evidence. Evidence notebooks with real outputs are in `evidence/`.
-
-## Decisions and trade-offs
-
-See **DECISIONS.md** (12 decisions with alternatives). The ones a technical buyer will ask about:
-
-- **Classic row filters and masks instead of governed-tag ABAC** because the demo workspace has no governed tags left; ABAC is the production path.
-- **UC policies do not reach Lakebase**, so the same entitlements are enforced again with Postgres RLS and approval triggers.
-- **Supervisor Agent and Knowledge Assistant are legacy** (Nov 2026 docs), so routing is a code agent from the Agent Bricks CLI using Genie Agents as tools, with request-user (OBO) auth and MLflow tracing.
-- **The late-PO model only counts if it beats a simple baseline** on a time-split holdout (DECISIONS.md, evaluation protocol). It did: PR-AUC 0.562 vs 0.455.
-- **Agents are graded, not trusted:** Genie answered 11 of 12 benchmark questions correctly, the routing agent picked the right tools 15 of 15 times, and 25 of 25 ai_query explanations used only numbers from their source row.
-- **The user's identity flows app -> agent -> Genie.** Forwarding a user token between two Databricks Apps needs the calling app to request the `apps` scope plus every scope the target app uses (`genie`); with those, Ask in the app runs through the routing agent as the signed-in user. If the agent is unavailable, the app falls back to the Supply Exposure Genie Agent as the user and says so.
+Full list and the evaluation protocol in **DECISIONS.md**.
+- **Row filters and masks instead of ABAC** (no governed tags left in the workspace); the design maps onto ABAC. UC policies don't reach Lakebase, so Postgres RLS enforces the same rules there.
+- **Routing is a code agent over Genie Agents** (Supervisor Agent and Knowledge Assistant are legacy), graded 15 of 15. The user's identity flows app -> agent -> Genie because the app requests the `apps` scope plus the agent's `genie` scope.
+- **AI is measured, not trusted:** the model beat its baseline (PR-AUC 0.562 vs 0.455), Genie answered 11 of 12 benchmark questions, and 25 of 25 explanations were grounded.
 
 ## Deploy into a new workspace
 
 ```
 databricks bundle deploy --profile <p>
 databricks bundle run radar_rebuild --profile <p>  # generate, full refresh, train, score, explain, sync
-python tools/db.py sql src/governance/policies.sql --profile <p> --warehouse <id> --var catalog=supply_chain ...  # entitlements, filters, masks, grants
+python tools/db.py sql src/governance/policies.sql --profile <p> --warehouse <id> --var catalog=supply_chain ...
 python tools/db.py pg --profile <p> --file src/serve/lakebase_setup.sql   # then GRANT radar_app_rw TO each app/agent SP
 cd src/agent && agentbricks deploy                 # routing agent (not a bundle resource yet)
 databricks bundle run radar_app --profile <p>
