@@ -1,0 +1,7 @@
+.databricks/
+.env
+*.pem
+notes/
+__pycache__/
+.venv/
+*.secret
