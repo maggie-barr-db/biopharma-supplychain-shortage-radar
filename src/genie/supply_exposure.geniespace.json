@@ -1,0 +1,201 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "00000000000000000000000000001000",
+    "question": [
+     "Which SKUs run out first in the current disruption?"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000001001",
+    "question": [
+     "How much revenue is at risk right now?"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000001002",
+    "question": [
+     "Which EU SKUs have the lowest days of cover?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "supply_chain.gold.api_exposure",
+    "description": [
+     "Ontology edges: one row per API x SKU x region with single-source flag, demand and revenue"
+    ]
+   },
+   {
+    "identifier": "supply_chain.gold.days_of_cover",
+    "description": [
+     "One row per SKU x region: days of cover including risk-adjusted inbound API"
+    ]
+   },
+   {
+    "identifier": "supply_chain.gold.disruption_impact",
+    "description": [
+     "One row per active supplier disruption x SKU: cover without the vendor, stockout date, revenue at risk"
+    ]
+   }
+  ],
+  "metric_views": [
+   {
+    "identifier": "supply_chain.gold.mv_supply_kpis",
+    "description": [
+     "Governed supply KPIs: days of cover, single-source exposure, revenue"
+    ]
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "00000000000000000000000000001064",
+    "content": [
+     "You answer supply exposure questions for BioChain Industries supply planners and the VP Supply Chain.",
+     "Days of cover means total_cover_days in gold.days_of_cover (finished goods plus API at the site). Use the metric view gold.mv_supply_kpis for KPI aggregates when it fits.",
+     "Single-source means single_source = true (only one approved vendor for the API).",
+     "A current or active disruption is any row in gold.disruption_impact. Revenue at risk is revenue_at_risk in that table; supply gap days is supply_gap_days.",
+     "Revenue, price and revenue at risk are confidential. If these columns come back NULL the user is not entitled to commercial values: say so plainly and answer in units and days instead.",
+     "Regions are US, EU and APAC. Always show drug and sku_id together so planners can act."
+    ]
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "00000000000000000000000000001065",
+    "question": [
+     "Which SKUs run out first in the current disruption?"
+    ],
+    "sql": [
+     "SELECT sku_id, drug, region, cover_days_without_vendor, projected_stockout_date, supply_gap_days FROM supply_chain.gold.disruption_impact ORDER BY projected_stockout_date LIMIT 10"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000001066",
+    "question": [
+     "What share of revenue depends on single-source APIs?"
+    ],
+    "sql": [
+     "SELECT MEASURE(single_source_revenue_share) AS single_source_revenue_share FROM supply_chain.gold.mv_supply_kpis"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000001067",
+    "question": [
+     "Average days of cover by region"
+    ],
+    "sql": [
+     "SELECT region, MEASURE(avg_days_of_cover) AS avg_days_of_cover FROM supply_chain.gold.mv_supply_kpis GROUP BY region ORDER BY region"
+    ]
+   }
+  ]
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "000000000000000000000000000010c8",
+    "question": [
+     "Which 10 SKUs run out first in the current disruption?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT sku_id, drug, projected_stockout_date FROM supply_chain.gold.disruption_impact ORDER BY projected_stockout_date, sku_id LIMIT 10"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000010c9",
+    "question": [
+     "What is the total revenue at risk across current disruptions?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT SUM(revenue_at_risk) AS revenue_at_risk FROM supply_chain.gold.disruption_impact"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000010ca",
+    "question": [
+     "How many SKUs depend on a single-source API?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT COUNT(DISTINCT sku_id) AS skus FROM supply_chain.gold.api_exposure WHERE single_source"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000010cb",
+    "question": [
+     "What share of annual revenue depends on single-source APIs?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT SUM(CASE WHEN single_source THEN annual_revenue END) / SUM(annual_revenue) AS share FROM supply_chain.gold.api_exposure"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000010cc",
+    "question": [
+     "Which 5 EU SKUs have the lowest days of cover?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT sku_id, drug, total_cover_days FROM supply_chain.gold.days_of_cover WHERE region = 'EU' ORDER BY total_cover_days LIMIT 5"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000010cd",
+    "question": [
+     "What is the average days of cover by region?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT region, AVG(total_cover_days) AS avg_days FROM supply_chain.gold.days_of_cover GROUP BY region ORDER BY region"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000010ce",
+    "question": [
+     "Which APIs are used by the most SKUs?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT api_id, api_name, COUNT(DISTINCT sku_id) AS skus FROM supply_chain.gold.api_exposure GROUP BY api_id, api_name ORDER BY skus DESC LIMIT 5"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -18,7 +18,9 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Serverless file tasks run via exec without __file__, so the job passes --src-dir.
+_src = next((sys.argv[i + 1] for i, x in enumerate(sys.argv) if x == "--src-dir"), ".")
+sys.path.append(_src)
 from features import FEATURES_CAT, FEATURES_NUM, feature_sql  # noqa: E402
 
 
@@ -31,6 +33,7 @@ def recall_at_top(y, score, frac=0.2):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--catalog", default="supply_chain")
+    p.add_argument("--src-dir", default=".")
     p.add_argument("--endpoint", default="late-po-model")
     a, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()

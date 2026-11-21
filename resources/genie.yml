@@ -1,0 +1,12 @@
+resources:
+  genie_spaces:
+    supply_exposure:
+      title: BioChain Supply Exposure
+      description: Which products, lots and markets are exposed when an API supplier is disrupted, days of cover, revenue at risk.
+      warehouse_id: ${var.warehouse_id}
+      file_path: ../src/genie/supply_exposure.geniespace.json
+    supplier_quality:
+      title: BioChain Supplier Quality
+      description: Supplier quality events, FDA findings, on-time delivery and predicted late risk.
+      warehouse_id: ${var.warehouse_id}
+      file_path: ../src/genie/supplier_quality.geniespace.json

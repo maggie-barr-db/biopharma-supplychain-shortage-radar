@@ -32,3 +32,8 @@ CREATE OR REFRESH MATERIALIZED VIEW ${catalog}.gold.disruption_impact (
 WITH ROW FILTER ${catalog}.governance.region_filter ON (region)
 COMMENT "One row per active disruption x SKU x region: cover without the vendor, stockout date, revenue at risk"
 AS SELECT * FROM ${catalog}.silver.impact_base;
+
+CREATE OR REFRESH MATERIALIZED VIEW ${catalog}.gold.supplier_event
+COMMENT "One row per supplier quality event (inspection, FDA 483, warning letter, import alert, audit), mapped to the ERP vendor"
+AS SELECT vendor_id, supplier_code, event_type, event_date, severity, status, finding_text, site_country
+FROM ${catalog}.silver.supplier_event;

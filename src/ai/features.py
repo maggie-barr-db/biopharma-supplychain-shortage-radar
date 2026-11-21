@@ -16,7 +16,7 @@ def feature_sql(catalog: str, where: str) -> str:
     WITH po AS (SELECT * FROM {catalog}.silver.po_line WHERE {where}),
     hist AS (
       SELECT p.po_number, p.po_line, count(h.po_number) AS vendor_receipts_365d,
-             avg(CASE WHEN h.is_late THEN 0.0 ELSE 1.0 END) AS vendor_on_time_rate_365d
+             avg(CASE WHEN h.is_late THEN 0.0D ELSE 1.0D END) AS vendor_on_time_rate_365d
       FROM po p LEFT JOIN {catalog}.silver.po_line h
         ON h.vendor_id = p.vendor_id AND h.receipt_date < p.order_date
        AND h.receipt_date >= date_sub(p.order_date, 365)
@@ -31,11 +31,11 @@ def feature_sql(catalog: str, where: str) -> str:
         ON e.vendor_id = p.vendor_id AND e.event_date < p.order_date
       GROUP BY p.po_number, p.po_line)
     SELECT p.po_number, p.po_line, p.vendor_id, p.material_id, p.order_date, p.promised_date, p.is_late,
-           coalesce(h.vendor_on_time_rate_365d, 0.7) AS vendor_on_time_rate_365d,
-           coalesce(h.vendor_receipts_365d, 0) AS vendor_receipts_365d,
-           coalesce(q.critical_events_180d, 0) AS critical_events_180d,
-           coalesce(q.critical_events_30d, 0) AS critical_events_30d,
-           CAST(p.lead_time_days AS DOUBLE) AS lead_time_days, p.order_qty_kg, month(p.order_date) AS order_month,
+           CAST(coalesce(h.vendor_on_time_rate_365d, 0.7D) AS DOUBLE) AS vendor_on_time_rate_365d,
+           CAST(coalesce(h.vendor_receipts_365d, 0) AS DOUBLE) AS vendor_receipts_365d,
+           CAST(coalesce(q.critical_events_180d, 0) AS DOUBLE) AS critical_events_180d,
+           CAST(coalesce(q.critical_events_30d, 0) AS DOUBLE) AS critical_events_30d,
+           CAST(p.lead_time_days AS DOUBLE) AS lead_time_days, CAST(p.order_qty_kg AS DOUBLE) AS order_qty_kg, CAST(month(p.order_date) AS DOUBLE) AS order_month,
            v.country AS vendor_country, left(p.site_id, 2) AS site_region, m.material_type
     FROM po p
     JOIN hist h USING (po_number, po_line)

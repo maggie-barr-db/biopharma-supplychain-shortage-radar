@@ -31,7 +31,7 @@ resources:
           depends_on: [{task_key: pipeline}]
           spark_python_task:
             python_file: ../src/ai/score_po_risk.py
-            parameters: ["--catalog", "${var.catalog}"]
+            parameters: ["--catalog", "${var.catalog}", "--src-dir", "${workspace.file_path}/src/ai"]
           environment_key: ml
         - task_key: refresh_gold
           depends_on: [{task_key: score_po_risk}]
@@ -64,13 +64,13 @@ resources:
           depends_on: [{task_key: pipeline_full_refresh}]
           spark_python_task:
             python_file: ../src/ai/train_late_po.py
-            parameters: ["--catalog", "${var.catalog}", "--endpoint", "late-po-model"]
+            parameters: ["--catalog", "${var.catalog}", "--endpoint", "late-po-model", "--src-dir", "${workspace.file_path}/src/ai"]
           environment_key: ml
         - task_key: score_po_risk
           depends_on: [{task_key: train_late_po}]
           spark_python_task:
             python_file: ../src/ai/score_po_risk.py
-            parameters: ["--catalog", "${var.catalog}"]
+            parameters: ["--catalog", "${var.catalog}", "--src-dir", "${workspace.file_path}/src/ai"]
           environment_key: ml
         - task_key: refresh_gold
           depends_on: [{task_key: score_po_risk}]
@@ -91,7 +91,7 @@ resources:
         - task_key: train_late_po
           spark_python_task:
             python_file: ../src/ai/train_late_po.py
-            parameters: ["--catalog", "${var.catalog}", "--endpoint", "late-po-model"]
+            parameters: ["--catalog", "${var.catalog}", "--endpoint", "late-po-model", "--src-dir", "${workspace.file_path}/src/ai"]
           environment_key: ml
       environments:
         - environment_key: ml

@@ -8,13 +8,16 @@ import argparse, json, os, sys
 import mlflow
 from pyspark.sql import SparkSession, functions as F
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Serverless file tasks run via exec without __file__, so the job passes --src-dir.
+_src = next((sys.argv[i + 1] for i, x in enumerate(sys.argv) if x == "--src-dir"), ".")
+sys.path.append(_src)
 from features import FEATURES_CAT, FEATURES_NUM, feature_sql  # noqa: E402
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--catalog", default="supply_chain")
+    p.add_argument("--src-dir", default=".")
     a, _ = p.parse_known_args()
     spark = SparkSession.builder.getOrCreate()
     mlflow.set_registry_uri("databricks-uc")

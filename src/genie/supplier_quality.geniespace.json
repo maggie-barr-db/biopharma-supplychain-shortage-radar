@@ -1,0 +1,148 @@
+{
+ "version": 2,
+ "config": {
+  "sample_questions": [
+   {
+    "id": "00000000000000000000000000002000",
+    "question": [
+     "Which suppliers have an open warning letter?"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000002001",
+    "question": [
+     "Which single-source suppliers have the highest predicted late risk?"
+    ]
+   },
+   {
+    "id": "00000000000000000000000000002002",
+    "question": [
+     "What did the latest warning letter say?"
+    ]
+   }
+  ]
+ },
+ "data_sources": {
+  "tables": [
+   {
+    "identifier": "supply_chain.gold.supplier_event",
+    "description": [
+     "One row per supplier quality event: inspections, FDA 483s, warning letters, import alerts, with finding text"
+    ]
+   },
+   {
+    "identifier": "supply_chain.gold.supplier_risk",
+    "description": [
+     "One row per vendor: 12-month on-time rate, latest open critical quality event, predicted late risk on open POs, single-source API count"
+    ]
+   }
+  ],
+  "volumes": [
+   {
+    "path": "/Volumes/supply_chain/raw/landing/docs",
+    "description": [
+     "Synthetic FDA 483 and warning letter texts by supplier code and date"
+    ]
+   }
+  ]
+ },
+ "instructions": {
+  "text_instructions": [
+   {
+    "id": "00000000000000000000000000002064",
+    "content": [
+     "You answer supplier quality and delivery-risk questions for BioChain Industries supply planners and quality teams.",
+     "Critical events are WARNING_LETTER and IMPORT_ALERT; FDA_483 is major. Open means status = 'OPEN'.",
+     "On-time rate is on_time_rate_12m in gold.supplier_risk. Predicted late risk on open purchase orders is mean_p_late_open_po (from the late-PO model).",
+     "Suppliers are identified by vendor_id (ERP) and supplier_code (quality system); show both when available.",
+     "For what a warning letter or 483 says, use finding_text in gold.supplier_event or the documents in the docs volume."
+    ]
+   }
+  ],
+  "example_question_sqls": [
+   {
+    "id": "00000000000000000000000000002065",
+    "question": [
+     "Which suppliers have an open warning letter or import alert?"
+    ],
+    "sql": [
+     "SELECT vendor_id, vendor_name, open_event_type, open_event_date, single_source_api_count FROM supply_chain.gold.supplier_risk WHERE open_event_type IN ('WARNING_LETTER','IMPORT_ALERT') ORDER BY open_event_date DESC"
+    ]
+   }
+  ]
+ },
+ "benchmarks": {
+  "questions": [
+   {
+    "id": "000000000000000000000000000020c8",
+    "question": [
+     "Which suppliers have an open warning letter or import alert?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT vendor_id FROM supply_chain.gold.supplier_risk WHERE open_event_type IN ('WARNING_LETTER','IMPORT_ALERT') ORDER BY vendor_id"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000020c9",
+    "question": [
+     "Which supplier has the lowest 12-month on-time rate?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT vendor_id, vendor_name, on_time_rate_12m FROM supply_chain.gold.supplier_risk ORDER BY on_time_rate_12m LIMIT 1"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000020ca",
+    "question": [
+     "How many FDA 483 events were recorded in the last 12 months?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT COUNT(*) AS n FROM supply_chain.gold.supplier_event WHERE event_type = 'FDA_483' AND event_date >= DATE '2025-11-20'"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000020cb",
+    "question": [
+     "Which single-source suppliers also have an open quality event?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT vendor_id, vendor_name, open_event_type FROM supply_chain.gold.supplier_risk WHERE single_source_api_count > 0 AND open_event_type IS NOT NULL ORDER BY vendor_id"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "000000000000000000000000000020cc",
+    "question": [
+     "Which 5 suppliers have the highest predicted late risk on open POs?"
+    ],
+    "answer": [
+     {
+      "format": "SQL",
+      "content": [
+       "SELECT vendor_id, vendor_name, mean_p_late_open_po FROM supply_chain.gold.supplier_risk ORDER BY mean_p_late_open_po DESC NULLS LAST LIMIT 5"
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

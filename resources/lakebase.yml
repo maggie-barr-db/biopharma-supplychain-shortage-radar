@@ -1,0 +1,33 @@
+resources:
+  postgres_projects:
+    radar_db:
+      project_id: shortage-radar
+      display_name: Shortage radar operational store
+      pg_version: 17
+      custom_tags:
+        - key: project
+          value: biopharma-supplychain-shortage-radar
+
+  postgres_synced_tables:
+    disruption_impact:
+      synced_table_id: ${var.catalog}.ops.disruption_impact
+      source_table_full_name: ${var.catalog}.silver.impact_base
+      branch: projects/shortage-radar/branches/production
+      postgres_database: databricks_postgres
+      primary_key_columns: [disruption_id, sku_id]
+      scheduling_policy: SNAPSHOT
+      create_database_objects_if_missing: true
+      new_pipeline_spec:
+        storage_catalog: ${var.catalog}
+        storage_schema: ml
+    user_entitlement:
+      synced_table_id: ${var.catalog}.ops.user_entitlement
+      source_table_full_name: ${var.catalog}.governance.user_entitlement
+      branch: projects/shortage-radar/branches/production
+      postgres_database: databricks_postgres
+      primary_key_columns: [principal]
+      scheduling_policy: SNAPSHOT
+      create_database_objects_if_missing: true
+      new_pipeline_spec:
+        storage_catalog: ${var.catalog}
+        storage_schema: ml
