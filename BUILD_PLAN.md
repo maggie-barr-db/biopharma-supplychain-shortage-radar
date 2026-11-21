@@ -90,6 +90,6 @@ The evaluator reads 30 files and drops `.tsx/.css/.yml`. Readable files planned:
 
 ## 8. Risks
 
-- **OBO from app to agent to Genie** may not chain; fallback is that the app calls Genie Conversation API OBO directly and the agent uses its service principal for the Lakebase tool only.
+- **OBO from app to agent to Genie:** first attempt was refused; resolved by adding the `apps` and `genie` user scopes to the app. The Genie fallback stays for resilience.
 - **Lakebase RLS identity:** the app connects as its service principal and sets the region from the OBO user; documented as a trade-off.
 - **Genie Agents volumes** are Public Preview; if unavailable, the Supplier Quality agent uses `silver.supplier_event` text columns only.

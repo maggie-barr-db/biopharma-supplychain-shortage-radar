@@ -4,7 +4,7 @@ resources:
       name: shortage-radar
       description: BioChain API shortage radar - disruption impact, mitigation approvals and Ask, on behalf of the signed-in user
       source_code_path: ../src/app
-      user_api_scopes: [sql, dashboards.genie]
+      user_api_scopes: [sql, dashboards.genie, genie, apps]
       resources:
         - name: warehouse
           sql_warehouse:

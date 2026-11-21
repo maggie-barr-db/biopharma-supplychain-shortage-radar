@@ -4,8 +4,9 @@ Identity: every request runs as the signed-in user (Databricks Apps on-behalf-of
 - UC reads (gold tables, metric view) use the user's token, so UC row filters and masks apply.
 - Lakebase reads/writes use the app service principal with app.user = the user's email, so the same
   entitlements apply through Postgres RLS and the approval trigger (UC policies do not reach Lakebase).
-- Ask goes to the routing agent with the user's token; if that call fails, it falls back to the
-  Supply Exposure Genie Agent called directly as the user.
+- Ask goes to the routing agent with the user's token (app scopes include `apps` and the agent's `genie` scope,
+  which app-to-app user-token forwarding requires); if the agent is unavailable, it falls back to the Supply
+  Exposure Genie Agent called directly as the user.
 """
 import os, time, uuid
 from pathlib import Path

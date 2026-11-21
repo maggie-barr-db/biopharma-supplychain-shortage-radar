@@ -49,7 +49,7 @@ See **DECISIONS.md** (12 decisions with alternatives). The ones a technical buye
 - **Supervisor Agent and Knowledge Assistant are legacy** (Nov 2026 docs), so routing is a code agent from the Agent Bricks CLI using Genie Agents as tools, with request-user (OBO) auth and MLflow tracing.
 - **The late-PO model only counts if it beats a simple baseline** on a time-split holdout (EVAL_PROTOCOL.md). It did: PR-AUC 0.562 vs 0.455.
 - **Agents are graded, not trusted:** Genie answered 11 of 12 benchmark questions correctly, the routing agent picked the right tools 15 of 15 times, and 25 of 25 ai_query explanations used only numbers from their source row.
-- **App-to-agent token forwarding was refused** (app-to-app OBO), so Ask in the app falls back to the Supply Exposure Genie Agent as the user and says so; the agent is called directly with the user's token in the evaluation.
+- **The user's identity flows app -> agent -> Genie.** Forwarding a user token between two Databricks Apps needs the calling app to request the `apps` scope plus every scope the target app uses (`genie`); with those, Ask in the app runs through the routing agent as the signed-in user. If the agent is unavailable, the app falls back to the Supply Exposure Genie Agent as the user and says so.
 
 ## Deploy into a new workspace
 
