@@ -202,6 +202,8 @@ def ask(q: Ask, req: Request):
                                                                         for t in tools if t)) if tools else "agent:radar-router"
             return {"route": route, "answer": answer or str(out)[:4000], "rows": None,
                     "session_id": body["session_id"], "seconds": round(time.time() - started, 1)}
+        except httpx.HTTPStatusError as e:  # app-to-app call with the forwarded user token was refused
+            fallback_reason = f"agent returned HTTP {e.response.status_code}; answered by Genie as the user"
         except Exception as e:  # noqa: BLE001 - fall back to Genie, report why
             fallback_reason = f"agent unavailable: {type(e).__name__}"
     else:

@@ -37,6 +37,12 @@ resources:
           depends_on: [{task_key: score_po_risk}]
           pipeline_task:
             pipeline_id: ${resources.pipelines.radar_pipeline.id}
+        - task_key: explain_impact
+          depends_on: [{task_key: refresh_gold}]
+          spark_python_task:
+            python_file: ../src/ai/explain_impact.py
+            parameters: ["--catalog", "${var.catalog}", "--llm", "databricks-claude-haiku-5-5"]
+          environment_key: ml
         - task_key: sync_lakebase
           depends_on: [{task_key: refresh_gold}]
           spark_python_task:
@@ -82,6 +88,12 @@ resources:
           depends_on: [{task_key: score_po_risk}]
           pipeline_task:
             pipeline_id: ${resources.pipelines.radar_pipeline.id}
+        - task_key: explain_impact
+          depends_on: [{task_key: refresh_gold}]
+          spark_python_task:
+            python_file: ../src/ai/explain_impact.py
+            parameters: ["--catalog", "${var.catalog}", "--llm", "databricks-claude-haiku-5-5"]
+          environment_key: ml
         - task_key: sync_lakebase
           depends_on: [{task_key: refresh_gold}]
           spark_python_task:

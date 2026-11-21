@@ -121,7 +121,11 @@ def ml(a):
 def lakebase(a):
     from pg import connect
     out = []
-    with connect(a.profile) as conn, conn.cursor() as cur:
+    # Connect as a service principal login without BYPASSRLS (the pattern the app uses: SP login + app.user).
+    with connect(a.planner_profile) as conn, conn.cursor() as cur:
+        cur.execute("SELECT current_user, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+        out.append(("connected as a service principal role without BYPASSRLS", "SELECT current_user, rolbypassrls", json.dumps(cur.fetchall())))
+
         def q(title, stmt, user):
             cur.execute("SELECT set_config('app.user', %s, false)", (user,))
             try:
@@ -143,9 +147,11 @@ def lakebase(a):
         q("exec approves with rationale", "UPDATE ops.mitigation_action SET status='APPROVED', decision_rationale='Stock exists in EU-DE1; approved for 4 weeks' "
           "WHERE action_id = (SELECT max(action_id) FROM ops.mitigation_action WHERE status='PROPOSED' AND region='EU') RETURNING action_id, status, decided_by", ex)
         q("audit trail is append-only", "DELETE FROM ops.audit_log", ex)
+        q("decisions cannot be deleted", "DELETE FROM ops.mitigation_action", ex)
         q("audit trail", "SELECT action_id, event, actor, at FROM ops.audit_log ORDER BY audit_id DESC LIMIT 6", ex)
     notebook("04_lakebase", "**Operational write path with Part 11-style controls.** Planners propose, entitled approvers decide with a rationale, "
-             "no one approves their own proposal, every change lands in an append-only audit log, and Postgres RLS mirrors the UC region rules.\n", out)
+             "no one approves their own proposal, every change lands in an append-only audit log, decisions cannot be deleted, and Postgres RLS "
+             "mirrors the UC region rules (an EU planner cannot write or see US actions).\n", out)
 
 
 if __name__ == "__main__":

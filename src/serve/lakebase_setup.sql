@@ -85,3 +85,9 @@ SELECT d.disruption_id, d.vendor_id, d.event_type, d.event_date, d.sku_id, d.dru
        CASE WHEN e.can_see_commercial THEN d.annual_revenue END AS annual_revenue
 FROM ops.disruption_impact d
 JOIN ops.user_entitlement e ON e.principal = current_setting('app.user', true) AND (e.region = '*' OR e.region = d.region);
+
+-- Decisions are never deleted (Part 11 style); corrections are new rows with their own audit entries.
+CREATE OR REPLACE FUNCTION ops.fn_no_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION 'mitigation actions cannot be deleted'; END $$;
+DROP TRIGGER IF EXISTS trg_no_delete ON ops.mitigation_action;
+CREATE TRIGGER trg_no_delete BEFORE DELETE ON ops.mitigation_action FOR EACH ROW EXECUTE FUNCTION ops.fn_no_delete();
