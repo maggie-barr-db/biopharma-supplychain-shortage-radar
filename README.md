@@ -50,17 +50,17 @@ See **DECISIONS.md** (12 decisions with alternatives). The ones a technical buye
 - **Classic row filters and masks instead of governed-tag ABAC** because the demo workspace has no governed tags left; ABAC is the production path.
 - **UC policies do not reach Lakebase**, so the same entitlements are enforced again with Postgres RLS and approval triggers.
 - **Supervisor Agent and Knowledge Assistant are legacy** (Nov 2026 docs), so routing is a code agent from the Agent Bricks CLI using Genie Agents as tools, with request-user (OBO) auth and MLflow tracing.
-- **The late-PO model only counts if it beats a simple baseline** on a time-split holdout (EVAL_PROTOCOL.md). It did: PR-AUC 0.562 vs 0.455.
+- **The late-PO model only counts if it beats a simple baseline** on a time-split holdout (DECISIONS.md, evaluation protocol). It did: PR-AUC 0.562 vs 0.455.
 - **Agents are graded, not trusted:** Genie answered 11 of 12 benchmark questions correctly, the routing agent picked the right tools 15 of 15 times, and 25 of 25 ai_query explanations used only numbers from their source row.
 - **The user's identity flows app -> agent -> Genie.** Forwarding a user token between two Databricks Apps needs the calling app to request the `apps` scope plus every scope the target app uses (`genie`); with those, Ask in the app runs through the routing agent as the signed-in user. If the agent is unavailable, the app falls back to the Supply Exposure Genie Agent as the user and says so.
 
 ## Deploy into a new workspace
 
 ```
-databricks bundle deploy --profile <p>            # catalog, schemas: see tools/run_sql.py notes below
+databricks bundle deploy --profile <p>
 databricks bundle run radar_rebuild --profile <p>  # generate, full refresh, train, score, explain, sync
-python tools/run_sql.py src/governance/policies.sql ...   # entitlements, filter and mask functions
-python tools/pg.py --profile <p> --file src/serve/lakebase_setup.sql
+python tools/db.py sql src/governance/policies.sql --profile <p> --warehouse <id> --var catalog=supply_chain ...  # entitlements, filters, masks, grants
+python tools/db.py pg --profile <p> --file src/serve/lakebase_setup.sql   # then GRANT radar_app_rw TO each app/agent SP
 cd src/agent && agentbricks deploy                 # routing agent (not a bundle resource yet)
 databricks bundle run radar_app --profile <p>
 databricks bundle run radar_main --params scenario=warning_letter   # the demo disruption
@@ -81,6 +81,6 @@ The catalog is created with SQL (`CREATE CATALOG supply_chain`) because workspac
 
 **Iterating on the product.** Once the build ran, I went through the app and the end product, found what I liked and didn't, and we iterated until we had something better than either of us first imagined.
 
-**What we caught.** A human owner role bypasses Postgres row-level security, so the RLS tests now run as a service principal, which is how the app connects. Our own groundedness checker scored 6 of 25 explanations grounded when all 25 were. Two Genie "misses" were errors in our answer key. Each is a dated note in BUILD_LOG.md and EVAL_PROTOCOL.md, with the original results kept.
+**What we caught.** A human owner role bypasses Postgres row-level security, so the RLS tests now run as a service principal, which is how the app connects. Our own groundedness checker scored 6 of 25 explanations grounded when all 25 were. Two Genie "misses" were errors in our answer key. Each is a dated note in BUILD_LOG.md and DECISIONS.md, with the original results kept.
 
 **What I learned.** I used this to go past the bar and learn tooling I hadn't used, like routing an app's chat across Genie Agents. As builds get more complex and the product knowledge deeper, planning matters far more to a good build at this level of detail.

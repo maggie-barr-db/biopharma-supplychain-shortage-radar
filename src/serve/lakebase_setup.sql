@@ -93,3 +93,15 @@ CREATE OR REPLACE FUNCTION decisions.fn_no_delete() RETURNS trigger LANGUAGE plp
 BEGIN RAISE EXCEPTION 'mitigation actions cannot be deleted'; END $$;
 DROP TRIGGER IF EXISTS trg_no_delete ON decisions.mitigation_action;
 CREATE TRIGGER trg_no_delete BEFORE DELETE ON decisions.mitigation_action FOR EACH ROW EXECUTE FUNCTION decisions.fn_no_delete();
+
+-- Access through one group role: setup grants everything the app needs to radar_app_rw, and each app, agent or
+-- test service principal is added to it once: GRANT radar_app_rw TO "<client id>"; (tools/db.py pg --sql ...).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'radar_app_rw') THEN CREATE ROLE radar_app_rw NOLOGIN; END IF;
+END $$;
+GRANT USAGE ON SCHEMA ops, decisions TO radar_app_rw;
+GRANT SELECT, INSERT, UPDATE ON decisions.mitigation_action TO radar_app_rw;
+GRANT USAGE, SELECT ON SEQUENCE decisions.mitigation_action_action_id_seq TO radar_app_rw;
+GRANT SELECT, INSERT ON decisions.audit_log TO radar_app_rw;
+GRANT USAGE, SELECT ON SEQUENCE decisions.audit_log_audit_id_seq TO radar_app_rw;
+GRANT SELECT ON ops.user_entitlement, ops.disruption_impact, ops.v_disruption_impact TO radar_app_rw;

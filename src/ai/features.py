@@ -1,6 +1,6 @@
 """Point-in-time features for the late-PO model, shared by training and scoring.
 
-Timing rule (EVAL_PROTOCOL.md): every feature uses only information known at PO creation.
+Timing rule (evaluation protocol, DECISIONS.md): every feature uses only information known at PO creation.
 Vendor history counts only receipts before the order date; quality events only before the order date.
 Event status is not used because it reflects today, not the order date.
 """

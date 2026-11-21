@@ -1,6 +1,6 @@
 """P04 train the late-PO model (job radar_train) and serve it.
 
-Follows EVAL_PROTOCOL.md: baseline = 1 - vendor trailing on-time rate; holdout = most recent
+Follows the evaluation protocol in DECISIONS.md: baseline = 1 - vendor trailing on-time rate; holdout = most recent
 3 months of labelable PO lines by order date; main measure PR-AUC; no claim if the model beats
 the baseline by less than 0.05. Registers supply_chain.ml.late_po_model (alias champion) and
 points the serving endpoint at the new version.

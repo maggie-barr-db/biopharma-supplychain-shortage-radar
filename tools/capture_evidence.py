@@ -76,7 +76,7 @@ def pipeline(a):
     notebook("01_pipeline", f"**Raw files to governed gold.** Generator wrote {gen['po_lines']} PO lines with {gen['po_duplicates_planted']} planted duplicates, "
              f"{gen['po_lines_in_grams']} lines in grams and {gen['negative_forecasts']} negative forecasts; the pipeline quarantined the duplicates and "
              "negatives, filled missing lead times from the source list and matched every supplier quality code to an ERP vendor.\n", [
-        ("generator run summary (run_log/generate_base.json)", "-- src/data/generate.py", json.dumps(gen, indent=1)),
+        ("generator run summary (run_log/generate_base.json)", "-- src/data/generate.py", json.dumps({k: gen[k] for k in ("po_lines", "po_duplicates_planted", "po_lines_in_grams", "po_lines_no_lead_time", "negative_forecasts", "skus", "vendors", "quality_events")})),
         ("pipeline expectations, most recent check per rule (from the pipeline event log)", "SELECT ... FROM event_log(<pipeline_id>)", sql(dq_sql, a.profile)),
         ("schema contract: an unexpected field is rescued, not added (test file with inspectorName)",
          f"SELECT supplierCode, _rescued_data FROM {CAT}.bronze.supplier_event WHERE _rescued_data IS NOT NULL",
@@ -130,19 +130,19 @@ def ml(a):
     notebook("03_ml", f"**Late-PO model beats the baseline on the time-split holdout:** PR-AUC {train['pr_auc_model']} vs "
              f"{train['pr_auc_baseline']} (lift {train['pr_auc_lift']}, bar 0.05, result: {claim}); recall in top 20% "
              f"{train['recall_top20_model']} vs {train['recall_top20_baseline']}. Scores feed gold.days_of_cover and disruption impact.\n", [
-        ("training run (run_log/train_late_po.json)", "-- src/ai/train_late_po.py", json.dumps(train, indent=1)),
+        ("training run (run_log/train_late_po.json)", "-- src/ai/train_late_po.py", json.dumps({k: train[k] for k in ("model_version", "holdout_start", "train_rows", "test_rows", "test_late_rate", "pr_auc_model", "pr_auc_baseline", "pr_auc_lift", "recall_top20_model", "recall_top20_baseline", "claim")})),
         ("scoring run (run_log/score_po_risk.json)", "-- src/ai/score_po_risk.py", score),
         ("serving endpoint state", "databricks serving-endpoints get late-po-model",
          json.dumps({"state": ep.get("state"), "served": [(e.get("entity_name"), e.get("entity_version")) for e in ep.get("config", {}).get("served_entities", [])]})),
         ("endpoint response: risky vs reliable vendor", "databricks serving-endpoints query late-po-model", json.dumps(resp)[:1500]),
         ("model output in the score table", "SELECT ... FROM ml.po_risk_score", effect),
         ("GenAI: ai_query explanations + groundedness (run_log/explain_impact.json)", "-- src/ai/explain_impact.py",
-         volume_json("explain_impact.json", a.profile)[:2200]),
+         (lambda d: json.dumps({"llm": d["llm"], "explanations": d["explanations"], "grounded": d["grounded"], "sample": d["sample"][0]}))(json.loads(volume_json("explain_impact.json", a.profile)))),
     ])
 
 
 def lakebase(a):
-    from pg import connect
+    from db import connect
     out = []
     # Connect as a service principal login without BYPASSRLS (the pattern the app uses: SP login + app.user).
     with connect(a.planner_profile) as conn, conn.cursor() as cur:
@@ -154,7 +154,7 @@ def lakebase(a):
             try:
                 cur.execute(stmt)
                 res = cur.fetchall() if cur.description else f"{cur.rowcount} row(s)"
-                out.append((f"{title} [app.user={user}]", stmt, json.dumps(res, default=str)[:900]))
+                out.append((f"{title} [app.user={user}]", stmt, json.dumps(res, default=str)[:500]))
             except Exception as e:  # noqa: BLE001 - the failure is the evidence
                 out.append((f"{title} [app.user={user}]", stmt, f"ERROR (expected): {str(e).splitlines()[0]}"))
         ex, eu = "maggie.barrett@databricks.com", "7739855e-67af-424e-a487-b03d30433d3a"
@@ -199,10 +199,10 @@ def app(a):
              f"Impact lists the SKUs for {did}; Approvals reads the Lakebase workflow; Ask answered in {ask.get('seconds')} s via {ask.get('route')}.\n", [
         ("Radar: who am I (entitlements)", "GET /api/me", call("/api/me")),
         ("Radar: KPIs from the metric view", "GET /api/kpis", call("/api/kpis")),
-        ("Radar: active disruptions", "GET /api/disruptions", json.dumps(dis)[:1200]),
-        ("Impact: SKUs for the top disruption", f"GET /api/disruptions/{did}", call(f"/api/disruptions/{did}")[:1500]),
-        ("Approvals: Lakebase workflow", "GET /api/actions", call("/api/actions")[:1200]),
-        ("Ask", "POST /api/ask", json.dumps(ask)[:1500]),
+        ("Radar: active disruptions", "GET /api/disruptions", json.dumps(dis)[:900]),
+        ("Impact: SKUs for the top disruption (first 3)", f"GET /api/disruptions/{did}", json.dumps(json.loads(call(f"/api/disruptions/{did}"))[:3])),
+        ("Approvals: Lakebase workflow", "GET /api/actions", call("/api/actions")[:700]),
+        ("Ask", "POST /api/ask", json.dumps({"route": ask.get("route"), "seconds": ask.get("seconds"), "answer": (ask.get("answer") or "")[:900]})),
     ])
 
 

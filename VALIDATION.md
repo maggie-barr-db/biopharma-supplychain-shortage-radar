@@ -1,38 +1,48 @@
-# VALIDATION.md - stage -> code -> evidence
+# VALIDATION.md - reviewer map: stage -> code -> evidence
 
-Start with `evidence/00_overview.ipynb`. Every stage below ran in an Azure Databricks workspace (centralus) on 2026-11-21. Evidence files in `evidence/` are notebooks
-with real captured outputs (queries, job summaries, endpoint and agent responses), written by `tools/capture_evidence.py`
-and `tools/eval_genie.py`. Headline result first in each.
+Start here, then `evidence/00_overview.ipynb`. Everything ran in an Azure Databricks workspace (centralus) on 2026-11-21. Evidence notebooks hold real captured outputs (queries, job summaries, event-log metrics, endpoint, agent and app responses), headline first.
 
-| # | Stage | What it does | Code | Evidence |
+| # | Stage | What it does | Code | Evidence and result |
 |---|---|---|---|---|
-| 1 | Lakeflow | Auto Loader ingests ERP, supplier quality, forecast and SKU files under a schema contract (unexpected fields rescued and warned); conforms supplier codes; quarantines duplicate POs and negative forecasts; fills missing lead times; tracks feed freshness; fails the update on missing keys | `src/data/generate.py`, `src/pipeline/bronze.sql`, `silver.sql`, `silver_calc.sql`, `gold.sql` | `evidence/01_pipeline.ipynb` |
-| 2 | Unity Catalog | Published gold layer with region row filter and commercial masks; entitlement table, deny by default; planners granted gold only | `src/governance/policies.sql`, `grants.sql`, `src/pipeline/gold.sql` | `evidence/02_governance.ipynb` (same query as supply exec vs planner_eu service principal) |
-| 3 | ML | Late-PO classifier with point-in-time features, time-split holdout vs baseline, UC registry, serving endpoint; scores feed gold days of cover | `src/ai/features.py`, `train_late_po.py`, `score_po_risk.py` | `evidence/03_ml.ipynb` (PR-AUC 0.562 vs baseline 0.455) |
-| 3b | GenAI | `ai_query` explanations of each at-risk SKU (units and days only), groundedness checked and logged to MLflow | `src/ai/explain_impact.py` | `evidence/03_ml.ipynb` (25/25 explanations grounded) |
-| 4 | Lakebase | Synced impact and entitlements from UC; native mitigation workflow with Postgres RLS, approval rules (entitled approver, no self-approval, rationale), append-only audit log, no deletes; decisions land back in governed Delta | `src/serve/lakebase_setup.sql`, `lakebase_grants.sql`, `sync_lakebase.py`, `land_decisions.py` | `evidence/04_lakebase.ipynb` |
-| 5 | Genie Agents + routing | Two Genie Agents (Supply Exposure with metric view; Supplier Quality with docs volume); routing agent (Agent Bricks CLI, OpenAI Agents SDK) with request-user auth and a `propose_mitigation` Lakebase tool | `src/genie/*.geniespace.json`, `metric_view.sql`, `src/agent/agent/agent.py`, `src/agent/agent/tools/propose_mitigation.py` | `evidence/05_genie_agent.ipynb` (Genie 11/12 correct, routing 15/15, planner sees EU only and NULL revenue) |
-| 6 | Databricks App | FastAPI + React app on behalf of the signed-in user: Radar, Impact, Approvals, Ask | `src/app/backend/main.py` (logic), `src/app/frontend/src/App.tsx` (UI) | `evidence/06_app.ipynb` (API responses per screen) |
+| 1 | Lakeflow | Auto Loader under a schema contract (unexpected fields rescued and warned); conforms supplier codes; quarantines duplicate POs and negative forecasts; fills missing lead times; tracks feed freshness; fails the update on missing keys; file-arrival trigger | `src/pipeline/bronze.sql`, `silver.sql`, `silver_calc.sql`, `gold.sql`, `src/data/generate.py` | `01_pipeline`: 954 duplicates quarantined, 42 negatives dropped, 60/60 suppliers matched, schema drift rescued, triggered run SUCCESS |
+| 2 | Unity Catalog | Published gold layer with region row filter and commercial masks; entitlement table, deny by default; planners granted gold only | `src/governance/policies.sql`, `src/pipeline/gold.sql` | `02_governance`: exec sees 3 regions and revenue; EU planner sees EU only, revenue NULL, silver denied |
+| 3 | ML | Late-PO classifier with point-in-time features; time-split holdout vs baseline; UC registry; serving endpoint; scores feed gold days of cover | `src/ai/features.py`, `train_late_po.py`, `score_po_risk.py` | `03_ml`: PR-AUC 0.562 vs 0.455 baseline; endpoint 0.73 vs 0.06 for risky vs reliable vendor |
+| 3b | GenAI | `ai_query` explanations per at-risk SKU (units and days only), groundedness checked and logged to MLflow | `src/ai/explain_impact.py` | `03_ml`: 25 of 25 grounded |
+| 4 | Lakebase | Synced impact and entitlements; native workflow with Postgres RLS, approval rules (entitled approver, no self-approval, rationale), append-only audit, no deletes; decisions land back in governed Delta | `src/serve/lakebase_setup.sql`, `sync_lakebase.py`, `land_decisions.py` | `04_lakebase`: RLS blocks cross-region writes, rule violations refused, decision in `gold.mitigation_decision` |
+| 5 | Genie + routing | Genie Agents Supply Exposure (gold + metric view) and Supplier Quality (events + docs volume); routing agent (Agent Bricks CLI, OpenAI Agents SDK) with request-user auth and a `propose_mitigation` Lakebase tool | `src/genie/*.geniespace.json`, `metric_view.sql`, `src/agent/agent/agent.py`, `src/agent/agent/tools/propose_mitigation.py` | `05_genie_agent`: Genie 11/12 correct, routing 15/15, planner sees EU only and NULL revenue |
+| 6 | App | FastAPI + React on behalf of the signed-in user: Radar, Impact, Approvals, Ask (routes through the agent as the user) | `src/app/backend/main.py`, `src/app/frontend/src/App.tsx` | `06_app`: API responses per screen; Ask via agent -> Genie |
+
+## Data flow
+
+```
+generate.py -> /Volumes/supply_chain/raw/landing/{erp, supplier_quality, forecast, sku, docs}
+  -> bronze (9 streaming tables, Auto Loader, rescue mode) -> silver (conformed, quarantine, source_freshness)
+  -> silver calc (exposure, cover, impact; reads ml.po_risk_score) -> gold (published: row filter + masks) + mv_supply_kpis
+  -> Lakebase: ops.disruption_impact, ops.user_entitlement (synced) | decisions.mitigation_action, audit_log (native, RLS)
+  -> gold.mitigation_decision, gold.mitigation_audit (landed back)
+  -> Genie Agents + routing agent -> App
+```
+
+**Gold tables (grain):** `api_exposure` (API x SKU x region, the ontology edges), `days_of_cover` (SKU x region), `supplier_risk` (vendor), `supplier_event` (quality event), `disruption_impact` (disruption x SKU), `mitigation_decision` (action), metric view `mv_supply_kpis`.
 
 ## How the stages connect
 
-- `ml.po_risk_score` (stage 3) is joined into `silver.cover_base` and `silver.impact_base`, so the model changes gold days of cover and revenue at risk.
-- `silver.impact_base` (stage 1) is synced to Lakebase `ops.disruption_impact` (stage 4); the app and agent write `decisions.mitigation_action` against it, and `land_decisions` brings those decisions back to `gold.mitigation_decision`.
-- Genie and the app read only the governed gold layer (stage 2); the planner identity sees EU rows and NULL revenue in both.
-- The trigger is a file: a new file in `landing/supplier_quality/` starts `radar_main` by itself (file-arrival run in `evidence/01_pipeline.ipynb`). For the demo, `radar_main --params scenario=warning_letter` drops one supplier quality file; the job runs pipeline, score, refresh, explain and Lakebase sync.
+- Model scores (`ml.po_risk_score`) feed silver calc, so the model changes gold days of cover and revenue at risk.
+- `silver.impact_base` is synced into Lakebase; the app and agent write `decisions.mitigation_action`; `land_decisions` brings decisions back to Delta.
+- Genie and the app read only the governed gold layer; the EU planner sees EU rows and NULL revenue in both, and in Lakebase via RLS.
+- A new file in `landing/supplier_quality/` starts `radar_main`: pipeline -> score -> refresh gold -> explain + Lakebase sync -> land decisions.
 
-## Bundle (the evaluator does not read .yml, so key settings are quoted here)
+## Bundle (the evaluator does not read .yml, so key settings are quoted)
 
 ```
-databricks.yml   variables: catalog=supply_chain, warehouse_id; target dev
-resources/pipeline.yml   serverless SDP, libraries bronze.sql, silver.sql, silver_calc.sql, gold.sql
-resources/jobs.yml       radar_main: should_generate? -> generate -> pipeline -> score_po_risk -> refresh_gold -> explain_impact, sync_lakebase -> land_decisions
-                         (file-arrival trigger on landing/supplier_quality/); radar_rebuild: generate -> full refresh -> train -> score -> refresh -> explain, sync
-                         radar_train: train_late_po (registers supply_chain.ml.late_po_model@champion, updates endpoint late-po-model)
-resources/lakebase.yml   postgres_projects shortage-radar (PG 17); postgres_synced_tables ops.disruption_impact, ops.user_entitlement (SNAPSHOT)
-resources/genie.yml      genie_spaces supply_exposure, supplier_quality (serialized space v2 files)
-resources/apps.yml       app shortage-radar, user_api_scopes [sql, dashboards.genie], resources: warehouse, Genie Agent, Lakebase (CAN_CONNECT_AND_CREATE)
+databricks.yml           variables catalog=supply_chain, warehouse_id; target dev
+resources/pipeline.yml   serverless SDP: bronze.sql, silver.sql, silver_calc.sql, gold.sql
+resources/jobs.yml       radar_main (file-arrival trigger): should_generate? -> generate -> pipeline -> score_po_risk -> refresh_gold
+                         -> explain_impact, sync_lakebase -> land_decisions; radar_rebuild (fresh workspace); radar_train
+resources/lakebase.yml   postgres project shortage-radar (PG 17); synced tables ops.disruption_impact, ops.user_entitlement
+resources/genie.yml      genie_spaces supply_exposure, supplier_quality
+resources/apps.yml       app shortage-radar, user_api_scopes [sql, dashboards.genie, genie, apps]; warehouse, Genie, Lakebase resources
 resources/volumes.yml    raw.landing, raw.run_log
 ```
 
-The routing agent deploys with `agentbricks deploy` from `src/agent` (agent.toml binds both Genie Agents with `auth = "user"`).
+Not bundle-managed (README deploy steps): UC setup SQL, Lakebase setup SQL, `agentbricks deploy` for the agent.

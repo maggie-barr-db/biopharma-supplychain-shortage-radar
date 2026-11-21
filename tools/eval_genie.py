@@ -1,4 +1,4 @@
-"""P07/P08 evaluation per EVAL_PROTOCOL.md section 2 -> evidence/05_genie_agent.ipynb.
+"""P07/P08 evaluation per the evaluation protocol in DECISIONS.md -> evidence/05_genie_agent.ipynb.
 
 1. Answer correctness: each benchmark question in the Genie Agent definitions is asked through the Genie
    Conversation API; the result is correct when the expected SQL's values appear in Genie's result
@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from capture_evidence import notebook  # noqa: E402
 
 WAREHOUSE = "1d88ef6b173bebc3"
-CROSS = [  # questions that need both agents or the action tool (EVAL_PROTOCOL: 3 cross questions)
+CROSS = [  # questions that need both agents or the action tool (evaluation protocol: 3 cross questions)
     ("Which products are exposed to the supplier that just received a warning letter, and when do they stock out?",
      {"supplier_quality", "supply_exposure"}),
     ("Are any SKUs in the current disruption supplied by vendors whose open POs are predicted to be late?",
@@ -103,7 +103,7 @@ def main():
              ("cross-agent answers", "-- routing agent", json.dumps([r.get("answer") for r in results if r["agent"] == "routing"], indent=1)[:2500]),
              ("access check as planner_eu (EU only, revenue NULL)", "-- Genie as service principal", json.dumps(access, default=str)[:1500])]
     head = (f"**Genie answers {n_correct}/{n_bench} benchmark questions correctly; the routing agent routes {n_routed}/{len(results)} "
-            f"to the expected tool(s)** (bars: 12/15 and 13/15 in EVAL_PROTOCOL). Run time {int(time.time() - t0)} s.\n")
+            f"to the expected tool(s)** (bars: 12/15 and 13/15 in the evaluation protocol). Run time {int(time.time() - t0)} s.\n")
     notebook("05_genie_agent", head, cells)
     print(head)
 

@@ -1,5 +1,5 @@
 """P04 GenAI step: ai_query writes a planner-ready explanation for each at-risk SKU in an active disruption,
-then a deterministic groundedness check, logged to MLflow, verifies it (EVAL_PROTOCOL.md section 3: every number must come from the row).
+then a deterministic groundedness check, logged to MLflow, verifies it (the evaluation protocol in DECISIONS.md: every number must come from the row).
 
 Explanations use units, days and dates only (never price or revenue), so planners can read them without a
 commercial leak; ml.impact_explanation carries the same region row filter as gold.

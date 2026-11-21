@@ -1,4 +1,5 @@
--- P03 governance: entitlement table + row filter and column mask functions (classic UC, no governed tags).
+-- P03 Unity Catalog setup: entitlement table, row filter and column mask functions (classic UC, no governed tags),
+-- planner read grants, and the model score table the gold layer reads. Run once per workspace with tools/db.py sql.
 -- Applied to gold tables in the pipeline definitions (WITH ROW FILTER / MASK). ABAC is the production path.
 -- Deny by default: a principal not in the entitlement table sees no rows and no commercial values.
 
@@ -30,3 +31,18 @@ RETURNS DOUBLE
 COMMENT 'Column mask: price and revenue values only for entitled personas, NULL otherwise'
 RETURN CASE WHEN EXISTS (SELECT 1 FROM ${catalog}.governance.user_entitlement e
                          WHERE e.principal = current_user() AND e.can_see_commercial) THEN v END;
+
+-- Planner read grants: gold (governed) layer only, never silver or bronze. ${principal} = planner user or SP.
+GRANT USE CATALOG ON CATALOG ${catalog} TO `${principal}`;
+GRANT USE SCHEMA ON SCHEMA ${catalog}.gold TO `${principal}`;
+GRANT SELECT ON SCHEMA ${catalog}.gold TO `${principal}`;
+GRANT USE SCHEMA ON SCHEMA ${catalog}.governance TO `${principal}`;
+GRANT SELECT ON TABLE ${catalog}.governance.user_entitlement TO `${principal}`;
+
+-- Score table read by gold.days_of_cover and gold.disruption_impact; overwritten by the score_po_risk task.
+CREATE TABLE IF NOT EXISTS ${catalog}.ml.po_risk_score (
+  po_number STRING, po_line INT, vendor_id STRING, material_id STRING,
+  p_late DOUBLE COMMENT 'Predicted probability the PO line arrives more than 7 days late',
+  baseline_p_late DOUBLE COMMENT 'Baseline: 1 - vendor trailing 12-month on-time rate',
+  model_version STRING, scored_at TIMESTAMP)
+COMMENT 'Late-PO model scores for open purchase order lines';

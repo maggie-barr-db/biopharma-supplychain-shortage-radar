@@ -8,3 +8,6 @@ __pycache__/
 node_modules/
 src/app/frontend/dist/
 *.tsbuildinfo
+CLAUDE.md
+FEBAR_CONTEXT.md
+package-lock.json
