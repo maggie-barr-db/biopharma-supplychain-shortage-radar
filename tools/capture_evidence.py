@@ -71,6 +71,12 @@ def pipeline(a):
         ("row counts and data quality by layer", "SELECT ... FROM bronze/silver/gold", counts),
         ("supplier code conformance", f"SELECT match_method, count(*) FROM {CAT}.silver.supplier_xref GROUP BY 1",
          sql(f"SELECT match_method, count(*) n FROM {CAT}.silver.supplier_xref GROUP BY 1", a.profile)),
+        ("file-arrival trigger: a new supplier quality file starts the job by itself", "databricks jobs list-runs --job-id <radar_main>",
+         json.dumps([{"run_id": r["run_id"], "trigger": r.get("trigger"), "result": r["state"].get("result_state"),
+                      "tasks": sorted(t["task_key"] for t in r.get("tasks", []))}
+                     for r in (lambda d: d if isinstance(d, list) else d.get("runs", []))(cli(["jobs", "list-runs", "--job-id",
+                     str(cli(["jobs", "list", "--name", "shortage-radar-main"], a.profile)[0]["job_id"]), "--limit", "10", "--expand-tasks"], a.profile))
+                     if r.get("trigger") == "FILE_ARRIVAL"][:1], indent=1)),
         ("latest forecast file wins (late and re-sent files ignored)", "SELECT published_at, count(*) FROM silver.forecast GROUP BY 1",
          sql(f"SELECT published_at, count(*) n FROM {CAT}.silver.forecast GROUP BY 1 ORDER BY 1 DESC LIMIT 4", a.profile)),
     ])

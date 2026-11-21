@@ -7,7 +7,7 @@ resources:
         - name: scenario
           default: none
       trigger:
-        pause_status: PAUSED
+        pause_status: UNPAUSED
         file_arrival:
           url: /Volumes/${var.catalog}/raw/landing/supplier_quality/
       tasks:
