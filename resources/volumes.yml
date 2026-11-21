@@ -1,0 +1,12 @@
+resources:
+  volumes:
+    landing:
+      catalog_name: ${var.catalog}
+      schema_name: raw
+      name: landing
+      comment: Raw landing files from ERP, supplier quality, forecast and SKU systems (synthetic)
+    run_log:
+      catalog_name: ${var.catalog}
+      schema_name: raw
+      name: run_log
+      comment: JSON run summaries from each job task, read back as evidence

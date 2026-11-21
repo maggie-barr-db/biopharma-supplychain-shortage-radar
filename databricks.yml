@@ -1,0 +1,20 @@
+bundle:
+  name: biopharma-supplychain-shortage-radar
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for all objects
+    default: supply_chain
+  warehouse_id:
+    description: Serverless SQL warehouse
+    default: 1d88ef6b173bebc3
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://adb-7405619902341965.5.azuredatabricks.net
+      root_path: ~/.bundle/${bundle.name}/${bundle.target}
