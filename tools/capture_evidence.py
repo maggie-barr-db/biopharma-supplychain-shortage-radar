@@ -57,6 +57,15 @@ def notebook(name, headline, cells):
 
 def pipeline(a):
     gen = json.loads(volume_json("generate_base.json", a.profile))
+    pid = cli(["pipelines", "list-pipelines", "--filter", "name LIKE 'shortage-radar-pipeline'"], a.profile)[0]["pipeline_id"]
+    dq_sql = f"""WITH ev AS (SELECT origin.update_id AS update_id, timestamp,
+        from_json(details:flow_progress.data_quality.expectations, 'array<struct<name:string,dataset:string,passed_records:bigint,failed_records:bigint>>') AS exp
+      FROM event_log('{pid}') WHERE event_type = 'flow_progress' AND details:flow_progress.data_quality.expectations IS NOT NULL),
+    latest AS (SELECT update_id FROM ev ORDER BY timestamp DESC LIMIT 1)
+    SELECT e.name AS expectation, replace(e.dataset, '{CAT}.', '') AS dataset,
+      CASE e.name WHEN 'po_key' THEN 'FAIL UPDATE' WHEN 'vendor_key' THEN 'FAIL UPDATE' WHEN 'non_negative' THEN 'DROP ROW' ELSE 'WARN' END AS on_violation,
+      e.passed_records AS passed, e.failed_records AS failed
+    FROM ev JOIN latest USING (update_id) LATERAL VIEW explode(exp) t AS e ORDER BY dataset, expectation"""
     counts = sql(f"""SELECT 'bronze.po_line' t, count(*) n FROM {CAT}.bronze.po_line UNION ALL SELECT 'silver.po_line', count(*) FROM {CAT}.silver.po_line
       UNION ALL SELECT 'silver.po_line_quarantine (duplicates)', count(*) FROM {CAT}.silver.po_line_quarantine
       UNION ALL SELECT 'silver.po_line lead time filled', count_if(lead_time_source='SOURCE_LIST') FROM {CAT}.silver.po_line
@@ -68,6 +77,7 @@ def pipeline(a):
              f"{gen['po_lines_in_grams']} lines in grams and {gen['negative_forecasts']} negative forecasts; the pipeline quarantined the duplicates and "
              "negatives, filled missing lead times from the source list and matched every supplier quality code to an ERP vendor.\n", [
         ("generator run summary (run_log/generate_base.json)", "-- src/data/generate.py", json.dumps(gen, indent=1)),
+        ("pipeline expectations, latest update (from the pipeline event log)", "SELECT ... FROM event_log(<pipeline_id>)", sql(dq_sql, a.profile)),
         ("row counts and data quality by layer", "SELECT ... FROM bronze/silver/gold", counts),
         ("supplier code conformance", f"SELECT match_method, count(*) FROM {CAT}.silver.supplier_xref GROUP BY 1",
          sql(f"SELECT match_method, count(*) n FROM {CAT}.silver.supplier_xref GROUP BY 1", a.profile)),
