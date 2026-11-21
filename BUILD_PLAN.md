@@ -13,8 +13,8 @@ P01 src/data/generate.py (job task, seeded, idempotent: overwrites a dated drop 
        sku/                                              CSV SKU master with net price and region
        docs/                                             TXT inspection summaries and warning letters (for Genie)
 P02 Lakeflow SDP (SQL, Auto Loader read_files, serverless, triggered)
-  bronze.*   streaming tables, raw columns + _source_file + _load_ts
-  silver.*   conformed; expectations; quarantine tables
+  bronze.*   streaming tables, raw columns + _source_file + _load_ts; schema contract (rescue mode, _rescued_data warned)
+  silver.*   conformed; expectations; quarantine tables; source_freshness (late or missing feeds warned)
   gold.*     materialized views + metric view
 P03 Unity Catalog: governance.* functions -> column mask on cost, row filter on region
 P04 ML: ml.late_po model (train job) -> serving endpoint -> gold.po_risk_score (batch score task)
@@ -22,7 +22,8 @@ P04 ML: ml.late_po model (train job) -> serving endpoint -> gold.po_risk_score (
 P05 Access test: service principal in planner_eu runs tools/access_test.py -> evidence
 P06 Lakebase Autoscaling project shortage-radar
     synced table  <- gold.disruption_impact      (read path)
-    native tables  mitigation_action, audit_log  (write path, Postgres RLS by region)
+    native tables  decisions.mitigation_action, decisions.audit_log  (write path, Postgres RLS by region)
+    back to Delta  land_decisions task -> gold.mitigation_decision, gold.mitigation_audit (Lakebase CDF configured, Beta)
 P07 Genie Agents: "Supply Exposure" (gold + metric view), "Supplier Quality" (silver.supplier_event + docs volume)
 P08 Routing agent (Agent Bricks CLI, OpenAI Agents SDK template): tools = 2 Genie Agents + propose_mitigation (Lakebase insert)
 P09 App (FastAPI + React, Databricks-branded, OBO): Radar, Impact detail, Approvals, Ask
@@ -33,10 +34,10 @@ P10 Evidence: tools/capture_evidence.py reads job exits, queries, endpoint and a
 
 | Stage | For the Supply Planning Lead | Inputs -> outputs | Features | Verified by -> evidence |
 |---|---|---|---|---|
-| Lakeflow | One trusted copy of ERP and supplier quality, with supplier codes matched | landing files -> bronze, silver, gold | SDP SQL, Auto Loader, expectations, quarantine, file-arrival trigger | row counts per layer, expectation pass/drop counts -> evidence/01_pipeline.md |
+| Lakeflow | One trusted copy of ERP and supplier quality, with supplier codes matched | landing files -> bronze, silver, gold | SDP SQL, Auto Loader (rescue schema mode), expectations, quarantine, freshness checks, file-arrival trigger | expectation results from the event log, rescued-data test, freshness, row counts -> evidence/01_pipeline.ipynb |
 | Unity Catalog | Each region sees its own sites; cost hidden from planners | gold.* -> masked, filtered views of the same tables | column mask + row filter functions, groups, lineage | same query as exec vs planner_eu SP -> evidence/02_governance.md |
 | ML / GenAI | Know which API orders will be late; get the impact in plain words | silver.po_line -> ml model -> gold.po_risk_score, gold.impact_explanation | MLflow 3, UC registry, Model Serving, ai_query | holdout metrics vs baseline, endpoint response, sample explanations -> evidence/03_ml.md |
-| Lakebase | Propose, approve and audit mitigations in one place | gold.disruption_impact (synced) -> mitigation_action, audit_log | Lakebase Autoscaling, synced table, Postgres RLS | insert, approve, read-back as two roles -> evidence/04_lakebase.md |
+| Lakebase | Propose, approve and audit mitigations in one place | silver.impact_base (synced) -> decisions.mitigation_action, audit_log -> gold.mitigation_decision | Lakebase Autoscaling, synced table, Postgres RLS, approval triggers, decisions landed back to Delta | RLS and approval rules as a non-bypass login, decisions in Delta -> evidence/04_lakebase.ipynb |
 | Genie + routing | Ask "which products run out first if supplier X stops?" | gold + metric view + docs -> answers, proposed mitigations | Genie Agents, Conversation API, Agent Bricks CLI, request-user auth, MLflow tracing | 15-question benchmark, routing accuracy, traces -> evidence/05_genie_agent.md |
 | App | One screen from signal to decision | Lakebase + agent + Genie -> UI | Databricks Apps (FastAPI + React), OBO | health check and API responses per screen -> evidence/06_app.md |
 
@@ -51,6 +52,7 @@ P10 Evidence: tools/capture_evidence.py reads job exits, queries, endpoint and a
 - `inventory` - one row per material or SKU x site x snapshot date.
 - `forecast` - one row per SKU x region x week, latest file wins; `forecast_quarantine`.
 - `sku` - one row per SKU, active only.
+- `source_freshness` - one row per feed: latest business date, age, status (ON_TIME, LATE, GAP, MISSING).
 - `supplier_event` - one row per quality event, mapped to vendor_id.
 
 **gold** (five, plus scores)
@@ -60,6 +62,7 @@ P10 Evidence: tools/capture_evidence.py reads job exits, queries, endpoint and a
 - `disruption_impact` - one row per active disruption x SKU x region; stockout date, revenue at risk.
 - `mv_supply_kpis` - metric view: days of cover, revenue at risk, single-source exposure, OTIF.
 - `po_risk_score`, `impact_explanation` - model and ai_query outputs.
+- `mitigation_decision`, `mitigation_audit` - Lakebase decisions and audit trail landed back to Delta (region-filtered, revenue masked).
 
 ## 4. Bundle layout
 
@@ -67,7 +70,7 @@ P10 Evidence: tools/capture_evidence.py reads job exits, queries, endpoint and a
 
 ## 5. Orchestration
 
-Job `radar_main`, file-arrival trigger on `landing/supplier_quality/`, plus manual: `generate` (manual runs only) -> `pipeline` -> `score_po_risk` -> `refresh_gold_impact` -> `explain_impact` -> `sync_lakebase` -> `capture_evidence`. Job `radar_train`: manual, trains and registers the model, updates the endpoint.
+Job `radar_main`, file-arrival trigger on `landing/supplier_quality/`, plus manual: `generate` (manual runs only) -> `pipeline` -> `score_po_risk` -> `refresh_gold` -> `explain_impact` and `sync_lakebase` -> `land_decisions`. Evidence is captured afterwards with `tools/capture_evidence.py`. Job `radar_train`: manual, trains and registers the model, updates the endpoint.
 
 ## 6. Time plan (~9 h)
 

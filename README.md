@@ -30,7 +30,7 @@ synthetic ERP + supplier quality + forecast files (UC volume)
   -> Unity Catalog: published gold layer with region row filter and commercial column masks
   -> ML: late-PO model (MLflow, UC registry, serving endpoint) scores open POs -> feeds days of cover
   -> GenAI: ai_query impact explanations; routing agent (Agent Bricks CLI) over two Genie Agents
-  -> Lakebase: synced impact + entitlements; native mitigation workflow with RLS, approval rules, audit log
+  -> Lakebase: synced impact + entitlements; native mitigation workflow with RLS, approval rules, audit log; decisions land back in Delta
   -> Databricks App (FastAPI + React), on behalf of the signed-in user: Radar, Impact, Approvals, Ask
 ```
 
