@@ -26,4 +26,6 @@ Written 2026-11-21, before any model, agent or Genie result was produced. Later 
 
 ## Change notes
 
-(none yet)
+- **2026-11-21 (before training):** the label is only observable once a line has had time to arrive, so training and holdout use received PO lines whose promised date is at least 45 days before the as-of date. Without this, recent late lines (not yet received) would be missing and the holdout would look easier than reality. The holdout is still the last 3 months of those lines by order date.
+- **2026-11-21 (before training):** dropped the "open critical event" feature because event status reflects today, not the order date (timing rule). Replaced with count of warning letters and import alerts in the 30 days before the order.
+- **2026-11-21 (before the first Genie run):** the 15 benchmark questions are the 12 `benchmarks` in `src/genie/*.geniespace.json` (each with its expected SQL) plus the 3 cross-agent questions in `tools/eval_genie.py`.

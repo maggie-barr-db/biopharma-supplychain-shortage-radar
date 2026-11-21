@@ -194,10 +194,13 @@ def ask(q: Ask, req: Request):
                            headers={"Authorization": f"Bearer {token}"})
             r.raise_for_status()
             out = r.json().get("output", [])
-            answer = "\n".join(m.get("content", "") if isinstance(m.get("content"), str) else
-                               " ".join(c.get("text", "") for c in m.get("content", []) if isinstance(c, dict))
-                               for m in out if isinstance(m, dict) and m.get("role") == "assistant")
-            return {"route": "agent:radar-router", "answer": answer or str(out)[:4000], "rows": None,
+            out = out.get("output", []) if isinstance(out, dict) else out
+            tools = [t.get("name") for m in out if isinstance(m, dict) for t in (m.get("tool_calls") or [])]
+            answer = "\n".join(m["content"] for m in out if isinstance(m, dict) and m.get("role") == "assistant"
+                               and isinstance(m.get("content"), str) and m["content"].strip())
+            route = "agent:radar-router -> " + ", ".join(dict.fromkeys(t.rsplit("_", 1)[0] if t.endswith(("_ask", "_poll")) else t
+                                                                        for t in tools if t)) if tools else "agent:radar-router"
+            return {"route": route, "answer": answer or str(out)[:4000], "rows": None,
                     "session_id": body["session_id"], "seconds": round(time.time() - started, 1)}
         except Exception as e:  # noqa: BLE001 - fall back to Genie, report why
             fallback_reason = f"agent unavailable: {type(e).__name__}"

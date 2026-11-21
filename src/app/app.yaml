@@ -9,4 +9,4 @@ env:
   - name: LAKEBASE_ENDPOINT
     value: projects/shortage-radar/branches/production/endpoints/primary
   - name: AGENT_URL
-    value: ""
+    value: https://agent-bricks-radar-router-7405619902341965.5.azure.databricksapps.com

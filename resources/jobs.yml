@@ -37,6 +37,12 @@ resources:
           depends_on: [{task_key: score_po_risk}]
           pipeline_task:
             pipeline_id: ${resources.pipelines.radar_pipeline.id}
+        - task_key: sync_lakebase
+          depends_on: [{task_key: refresh_gold}]
+          spark_python_task:
+            python_file: ../src/serve/sync_lakebase.py
+            parameters: ["--catalog", "${var.catalog}"]
+          environment_key: default
       environments:
         - environment_key: default
           spec:
@@ -76,6 +82,12 @@ resources:
           depends_on: [{task_key: score_po_risk}]
           pipeline_task:
             pipeline_id: ${resources.pipelines.radar_pipeline.id}
+        - task_key: sync_lakebase
+          depends_on: [{task_key: refresh_gold}]
+          spark_python_task:
+            python_file: ../src/serve/sync_lakebase.py
+            parameters: ["--catalog", "${var.catalog}"]
+          environment_key: default
       environments:
         - environment_key: default
           spec:

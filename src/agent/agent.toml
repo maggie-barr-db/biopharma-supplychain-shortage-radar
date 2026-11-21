@@ -5,15 +5,13 @@ framework = "openai"
 server = "agentbricks"
 deployment_name = "radar-router"
 
-[memory_store]
-name = "radar-router-utmijt-memory"
-
-[session_store]
-name = "radar-router-utmijt-sessions"
-
 [tracing]
 experiment_name = "/Shared/agentbricks_traces/radar-router-utmijt"
 [[tools]]
 id = "supply_exposure"
 auth = "user"
 source = {kind = "genie_agent", space_id = "01f1e5ec1aa915b9bbbb99bd6405732a"}
+[[tools]]
+id = "supplier_quality"
+auth = "user"
+source = {kind = "genie_agent", space_id = "01f1e5ed6bca17a5b3379cd0a7b512b2"}
