@@ -237,7 +237,7 @@ function Impact({ d, onPick }: { d: Row | null; onPick: (d: Row) => void }) {
                   </div>
                   {form.sku_id === x.r.sku_id && (
                     <div className="inline-propose" onClick={(e) => e.stopPropagation()}>
-                      <div className="ip-title">Propose a mitigation for {String(x.r.drug)} {String(x.r.strength)} · {String(x.r.pack)} · {String(x.r.region)}</div>
+                      <div className="ip-title">Propose a mitigation for {String(x.r.drug).replace(/^./, (c) => c.toUpperCase())} {String(x.r.strength)} · {String(x.r.pack)} · {String(x.r.region)}</div>
                       <div className="form">
                         <select value={form.action_type} onChange={(e) => setForm({ ...form, action_type: e.target.value })}>
                           {ACTIONS.map((a) => <option key={a} value={a}>{label(a)}</option>)}

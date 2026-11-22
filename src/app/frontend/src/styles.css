@@ -115,4 +115,4 @@ body.dock-open main { margin-right: 440px; max-width: none; transition: margin .
 .bars .guide { position: absolute; top: -9px; bottom: -9px; border-left: 1px dashed #9fb0b6; }
 .legend .hint { color: var(--coral); }
 .inline-propose { margin: 2px 0 10px 0; padding: 12px 14px; background: #fff6f3; border: 1px solid #ffd2c8; border-radius: 8px; }
-.ip-title { font-weight: 700; font-size: 14px; text-transform: capitalize; } .inline-propose .form { margin-top: 8px; }
+.ip-title { font-weight: 700; font-size: 14px; } .inline-propose .form { margin-top: 8px; }
