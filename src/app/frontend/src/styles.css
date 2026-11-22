@@ -87,3 +87,26 @@ button.link { background: none; border: 0; color: var(--coral); font: inherit; f
 .dock .examples button { font-size: 14px; }
 body.dock-open main { margin-right: 440px; max-width: none; transition: margin .22s ease; }
 @media (max-width: 1100px) { body.dock-open main { margin-right: 0; } }
+
+.markets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+.market { background: #fff; border: 1px solid var(--line); border-top: 3px solid var(--navy); border-radius: 10px; padding: 14px 16px; }
+.market.hot { border-top-color: var(--lava); } .mname { font-family: "DM Mono", monospace; font-size: 12px; letter-spacing: .1em; color: var(--slate); }
+.mbig { font-size: 26px; font-weight: 700; margin: 2px 0 4px; } .market.hot .mbig { color: var(--red); } .mbig span { font-size: 13px; font-weight: 400; color: var(--slate); }
+.mrow { font-size: 13px; color: var(--slate); } .mrow b { color: var(--navy); }
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; } .toolbar .legend { margin: 0; flex-wrap: wrap; }
+.sw.red { background: var(--lava); } .sw.navy { background: var(--navy2); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+.seg button { border: 0; background: none; font: inherit; font-size: 13px; padding: 7px 12px; cursor: pointer; color: var(--slate); } .seg button.on { background: var(--navy); color: #fff; } .seg button:disabled { opacity: .4; cursor: default; }
+.timeline-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 18px 12px; }
+.axis, .skurow { display: grid; grid-template-columns: 230px 1fr 170px; gap: 16px; align-items: center; }
+.axis { height: 30px; border-bottom: 1px solid var(--oat2); } .axis-track { position: relative; height: 100%; }
+.tick { position: absolute; top: 8px; transform: translateX(-50%); font-family: "DM Mono", monospace; font-size: 11px; color: var(--slate); } .tick.today { transform: none; color: var(--coral); }
+.drug { border-bottom: 1px solid var(--oat2); } .drug:last-child { border-bottom: 0; }
+.drughead { width: 100%; display: flex; align-items: baseline; gap: 18px; background: none; border: 0; font: inherit; color: inherit; padding: 12px 0 8px; cursor: pointer; text-align: left; }
+.caret { color: var(--coral); width: 12px; } .dn { font-size: 17px; font-weight: 700; text-transform: capitalize; min-width: 120px; } .dm { font-size: 13px; color: var(--slate); } .dm b { color: var(--navy); }
+.skurow { padding: 7px 0; cursor: pointer; border-radius: 6px; } .skurow:hover, .skurow.sel { background: #fff6f3; }
+.sku b { display: block; font-size: 14px; } .sku span { font-size: 12px; color: var(--slate); }
+.rg { display: inline-block; font-family: "DM Mono", monospace; font-size: 10px; background: var(--oat2); color: var(--navy); border-radius: 4px; padding: 1px 5px; margin-right: 4px; }
+.bars { height: 16px; } .bars .bar { position: absolute; left: 0; top: 2px; height: 12px; border-radius: 0 6px 6px 0; } .bars .bar.red { background: var(--lava); } .bars .bar.navy { background: var(--navy2); }
+.bars .grid { position: absolute; top: -8px; bottom: -8px; width: 1px; background: var(--oat2); } .bars .ready { position: absolute; top: -9px; bottom: -9px; width: 2px; background: var(--navy); z-index: 1; }
+.sval b { display: block; font-size: 13px; } .sval span { font-size: 12px; color: var(--slate); }

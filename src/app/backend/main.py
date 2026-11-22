@@ -91,10 +91,12 @@ def disruptions(req: Request):
 @app.get("/api/disruptions/{disruption_id}")
 def disruption(disruption_id: str, req: Request):
     w, _, _ = user_ctx(req)
-    return sql(w, f"""SELECT sku_id, drug, region, site_id, api_id, single_source, ROUND(weekly_units, 0) AS weekly_units,
-        cover_days_before, cover_days_without_vendor, requalification_days, projected_stockout_date, supply_gap_days,
-        revenue_at_risk FROM {CATALOG}.gold.disruption_impact WHERE disruption_id = :id
-        ORDER BY projected_stockout_date, sku_id""", {"id": disruption_id})
+    return sql(w, f"""SELECT d.sku_id, d.drug, e.strength, e.pack, d.region, d.site_id, d.api_id, d.single_source,
+        ROUND(d.weekly_units, 0) AS weekly_units, d.cover_days_before, d.cover_days_without_vendor, d.requalification_days,
+        d.projected_stockout_date, d.supply_gap_days, d.revenue_at_risk
+        FROM {CATALOG}.gold.disruption_impact d
+        LEFT JOIN {CATALOG}.gold.api_exposure e ON e.sku_id = d.sku_id AND e.api_id = d.api_id
+        WHERE d.disruption_id = :id ORDER BY d.projected_stockout_date, d.sku_id""", {"id": disruption_id})
 
 
 @app.get("/api/actions")

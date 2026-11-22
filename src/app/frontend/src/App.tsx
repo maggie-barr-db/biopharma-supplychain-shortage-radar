@@ -120,47 +120,128 @@ function Tile({ k, v, tone }: { k: string; v: React.ReactNode; tone: "red" | "na
   return <div className={`tile ${tone}`}><div className="tk">{k}</div><div className="tv">{v}</div></div>;
 }
 
+const DAY = 86400000;
+const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const ymd = (s: Row[string]) => { const [y, m, dd] = String(s).slice(0, 10).split("-").map(Number); return new Date(y, m - 1, dd); };
+
 function Impact({ d, onPick }: { d: Row | null; onPick: (d: Row) => void }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  const [sort, setSort] = useState<"urgency" | "revenue">("urgency");
+  const [openDrug, setOpenDrug] = useState<Record<string, boolean>>({});
   const [form, setForm] = useState({ sku_id: "", action_type: ACTIONS[2], description: "" });
   useEffect(() => { if (!d) api.disruptions().then((ds) => ds.length && onPick(ds[0])); }, [d]);
   useEffect(() => { if (d) api.disruption(String(d.disruption_id)).then(setRows).catch((e) => setMsg(String(e))); }, [d]);
+
+  const view = useMemo(() => {
+    if (!rows.length) return null;
+    const r0 = rows[0];
+    const asof = new Date(ymd(r0.projected_stockout_date).getTime() - Math.round(Number(r0.cover_days_without_vendor)) * DAY);
+    const ready = new Date(asof.getTime() + 180 * DAY);
+    const skus = rows.map((r) => {
+      const out = ymd(r.projected_stockout_date);
+      return { r, out, gap: Number(r.supply_gap_days) || 0, rar: num(r.revenue_at_risk), single: r.single_source === "true" };
+    });
+    const end = new Date(Math.max(ready.getTime() + 20 * DAY, ...skus.map((x) => x.out.getTime() + 10 * DAY)));
+    const pos = (t: Date) => ((t.getTime() - asof.getTime()) / (end.getTime() - asof.getTime())) * 100;
+    const months: Date[] = [];
+    for (let m = new Date(asof.getFullYear(), asof.getMonth() + 1, 1); m < end; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) months.push(m);
+    const revVisible = skus.some((x) => x.rar !== null);
+    const byDrug = new Map<string, typeof skus>();
+    skus.forEach((x) => byDrug.set(String(x.r.drug), [...(byDrug.get(String(x.r.drug)) ?? []), x]));
+    const groups = [...byDrug.entries()].map(([drug, xs]) => ({
+      drug, xs: [...xs].sort((a, b) => sort === "revenue" && revVisible ? (b.rar ?? 0) - (a.rar ?? 0) : a.out.getTime() - b.out.getTime()),
+      first: new Date(Math.min(...xs.map((x) => x.out.getTime()))), short: xs.filter((x) => x.gap > 0).length,
+      rar: revVisible ? xs.reduce((s, x) => s + (x.rar ?? 0), 0) : null,
+      regions: [...new Set(xs.filter((x) => x.gap > 0).map((x) => String(x.r.region)))].sort(),
+      doses: new Set(xs.map((x) => String(x.r.strength))).size,
+    })).sort((a, b) => sort === "revenue" && revVisible ? (b.rar ?? 0) - (a.rar ?? 0) : a.first.getTime() - b.first.getTime());
+    const regions = ["US", "EU", "APAC"].map((rg) => {
+      const xs = skus.filter((x) => x.r.region === rg);
+      const short = xs.filter((x) => x.gap > 0);
+      return { rg, total: xs.length, short: short.length, first: short.length ? new Date(Math.min(...short.map((x) => x.out.getTime()))) : null,
+               rar: revVisible ? short.reduce((s, x) => s + (x.rar ?? 0), 0) : null };
+    }).filter((x) => x.total > 0);
+    return { asof, ready, end, pos, months, groups, regions, revVisible };
+  }, [rows, sort]);
+
   if (!d) return <div className="empty">Loading the top disruption...</div>;
-  const maxDays = Math.max(180, ...rows.map((r) => Number(r.cover_days_before) || 0));
   const sku = rows.find((r) => r.sku_id === form.sku_id);
   const submit = () =>
     api.propose({ disruption_id: d.disruption_id, sku_id: form.sku_id, region: String(sku?.region ?? ""), action_type: form.action_type,
       description: form.description, est_revenue_protected: num(sku?.revenue_at_risk) })
       .then((r) => { setMsg(`Saved as proposed action #${r.action_id}. An approver signs off in Approvals.`); setForm({ ...form, description: "" }); })
       .catch((e) => setMsg(String(e)));
+  const isOpen = (drug: string, i: number) => openDrug[drug] ?? i === 0;
   return (
     <>
       <div className="eyebrow">Impact · {String(d.event_type).replace(/_/g, " ")} · {String(d.event_date)}</div>
       <h1>{String(d.vendor_name ?? d.vendor_id)}: {rows.length} SKUs exposed, first stockout in {Math.round(Number(d.first_stockout_days))} days</h1>
-      <div className="legend"><span><i className="sw cover" />cover without this supplier</span><span><i className="sw gap" />supply gap before an alternate source is qualified</span><span><i className="sw line" />qualification time</span></div>
-      <div className="impact">
-        {rows.map((r) => {
-          const cover = Number(r.cover_days_without_vendor) || 0, req = Number(r.requalification_days) || 0, gap = Math.max(0, req - cover);
-          return (
-            <div className="irow" key={String(r.sku_id)} onClick={() => setForm({ ...form, sku_id: String(r.sku_id) })}>
-              <div className="iname"><b>{String(r.drug)}</b><span>{String(r.sku_id)} · {String(r.region)} · {r.single_source === "true" ? "single-source" : "multi-source"}</span></div>
-              <div className="track">
-                <i className="cover" style={{ width: `${(Math.min(cover, maxDays) / maxDays) * 100}%` }} />
-                {gap > 0 && <i className="gap" style={{ left: `${(cover / maxDays) * 100}%`, width: `${(gap / maxDays) * 100}%` }} />}
-                <i className="line" style={{ left: `${(req / maxDays) * 100}%` }} />
+      {view && (
+        <>
+          <div className="markets">
+            {view.regions.map((m) => (
+              <div className={`market ${m.short ? "hot" : ""}`} key={m.rg}>
+                <div className="mname">{m.rg}</div>
+                <div className="mbig">{m.short}<span> of {m.total} SKUs run out before a new supplier is ready</span></div>
+                <div className="mrow">{m.first ? <>first stockout <b>{fmt(m.first)}</b></> : "covered"}{m.rar !== null && m.short > 0 && <> · {money(m.rar)} at risk</>}</div>
               </div>
-              <div className="ival"><b className={gap > 0 ? "red" : ""}>{String(r.projected_stockout_date)}</b><span>{gap > 0 ? `${Math.round(gap)} day gap` : "covered"} · {money(r.revenue_at_risk)}</span></div>
+            ))}
+          </div>
+          <div className="toolbar">
+            <div className="legend"><span><i className="sw red" />runs out before a new supplier is ready</span><span><i className="sw navy" />covered until then</span><span><i className="sw line" />new single-source supplier ready ~{fmt(view.ready)} (180 days)</span></div>
+            <div className="seg">
+              <button className={sort === "urgency" ? "on" : ""} onClick={() => setSort("urgency")}>Most urgent</button>
+              <button className={sort === "revenue" ? "on" : ""} disabled={!view.revVisible} title={view.revVisible ? "" : "Revenue is not visible for your role"} onClick={() => setSort("revenue")}>Most revenue at risk</button>
             </div>
-          );
-        })}
-      </div>
+          </div>
+          <div className="timeline-card">
+            <div className="axis">
+              <div className="axis-label" />
+              <div className="axis-track">
+                <span className="tick today" style={{ left: "0%" }}>today</span>
+                {view.months.filter((m) => view.pos(m) > 6).map((m) => <span key={m.toISOString()} className="tick" style={{ left: `${view.pos(m)}%` }}>{m.toLocaleDateString("en-US", { month: "short" })}</span>)}
+              </div>
+              <div />
+            </div>
+            {view.groups.map((g, i) => (
+              <div className="drug" key={g.drug}>
+                <button className="drughead" onClick={() => setOpenDrug({ ...openDrug, [g.drug]: !isOpen(g.drug, i) })}>
+                  <span className="caret">{isOpen(g.drug, i) ? "▾" : "▸"}</span>
+                  <span className="dn">{g.drug}</span>
+                  <span className="dm">{g.xs.length} SKUs · {g.doses} {g.doses === 1 ? "dose" : "doses"}</span>
+                  <span className="dm">{g.short ? <>{g.short} short in {g.regions.join(", ")}</> : "all covered"}</span>
+                  <span className="dm">first stockout <b className={g.short ? "red" : ""}>{fmt(g.first)}</b></span>
+                  {g.rar !== null && <span className="dm">{money(g.rar)} at risk</span>}
+                </button>
+                {isOpen(g.drug, i) && g.xs.map((x) => (
+                  <div className={`skurow ${form.sku_id === x.r.sku_id ? "sel" : ""}`} key={String(x.r.sku_id)} onClick={() => setForm({ ...form, sku_id: String(x.r.sku_id) })}>
+                    <div className="sku">
+                      <b>{String(x.r.strength)} · {String(x.r.pack)}</b>
+                      <span><span className="rg">{String(x.r.region)}</span> {String(x.r.sku_id)} · {x.single ? "single-source" : "backup supplier approved"}</span>
+                    </div>
+                    <div className="axis-track bars">
+                      {view.months.map((m) => <i key={m.toISOString()} className="grid" style={{ left: `${view.pos(m)}%` }} />)}
+                      <i className="ready" style={{ left: `${view.pos(view.ready)}%` }} />
+                      <i className={`bar ${x.gap > 0 ? "red" : "navy"}`} style={{ width: `${view.pos(x.out)}%` }} />
+                    </div>
+                    <div className="sval">
+                      <b className={x.gap > 0 ? "red" : ""}>runs out {fmt(x.out)}</b>
+                      <span>{x.gap > 0 ? `${Math.round(x.gap)} days short` : "covered"}{x.rar !== null && x.gap > 0 ? ` · ${money(x.r.revenue_at_risk) as unknown as string}` : ""}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <div className="panel">
         <div className="section-title">Propose a mitigation <span>click a SKU above to select it</span></div>
         <div className="form">
           <select value={form.sku_id} onChange={(e) => setForm({ ...form, sku_id: e.target.value })}>
             <option value="">Select SKU</option>
-            {rows.map((r) => <option key={String(r.sku_id)} value={String(r.sku_id)}>{String(r.drug)} · {String(r.sku_id)} · {String(r.region)}</option>)}
+            {rows.map((r) => <option key={String(r.sku_id)} value={String(r.sku_id)}>{String(r.drug)} {String(r.strength)} · {String(r.pack)} · {String(r.region)}</option>)}
           </select>
           <select value={form.action_type} onChange={(e) => setForm({ ...form, action_type: e.target.value })}>
             {ACTIONS.map((a) => <option key={a} value={a}>{label(a)}</option>)}
