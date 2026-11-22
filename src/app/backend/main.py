@@ -168,6 +168,7 @@ def audit(action_id: int, req: Request):
 class Ask(BaseModel):
     question: str
     session_id: str | None = None
+    context: str | None = None  # what the user is looking at, e.g. "Impact page, disruption V100103-2026-11-20"
 
 
 def ask_genie(w: WorkspaceClient, question: str) -> dict:
@@ -190,10 +191,11 @@ def ask_genie(w: WorkspaceClient, question: str) -> dict:
 def ask(q: Ask, req: Request):
     w, _, token = user_ctx(req)
     started = time.time()
+    question = f"[The user is on the {q.context}.] {q.question}" if q.context else q.question
     if AGENT_URL:
         try:
             body = {"id": str(uuid.uuid4()), "session_id": q.session_id or str(uuid.uuid4()),
-                    "input": [{"role": "user", "content": q.question}]}
+                    "input": [{"role": "user", "content": question}]}
             r = httpx.post(f"{AGENT_URL}/api/invocations", json=body, timeout=170,
                            headers={"Authorization": f"Bearer {token}"})
             r.raise_for_status()
@@ -212,7 +214,7 @@ def ask(q: Ask, req: Request):
             fallback_reason = f"agent unavailable: {type(e).__name__}"
     else:
         fallback_reason = "agent not configured"
-    res = ask_genie(w, q.question)
+    res = ask_genie(w, question)
     return {**res, "fallback_reason": fallback_reason, "seconds": round(time.time() - started, 1)}
 
 

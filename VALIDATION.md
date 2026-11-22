@@ -10,7 +10,7 @@ Start here, then `evidence/00_overview.ipynb`. Everything ran in an Azure Databr
 | 3b | GenAI | `ai_query` explanations per at-risk SKU (units and days only), groundedness checked and logged to MLflow | `src/ai/explain_impact.py` | `03_ml`: 25 of 25 grounded |
 | 4 | Lakebase | Synced impact and entitlements; native workflow with Postgres RLS, approval rules (entitled approver, no self-approval, rationale), append-only audit, no deletes; decisions land back in governed Delta | `src/serve/lakebase_setup.sql`, `sync_lakebase.py`, `land_decisions.py` | `04_lakebase`: RLS blocks cross-region writes, rule violations refused, decision in `gold.mitigation_decision` |
 | 5 | Genie + routing | Genie Agents Supply Exposure (gold + metric view) and Supplier Quality (events + docs volume); routing agent (Agent Bricks CLI, OpenAI Agents SDK) with request-user auth and a `propose_mitigation` Lakebase tool | `src/genie/*.geniespace.json`, `metric_view.sql`, `src/agent/agent/agent.py`, `src/agent/agent/tools/propose_mitigation.py` | `05_genie_agent`: Genie 11/12 correct, routing 15/15, planner sees EU only and NULL revenue |
-| 6 | App | FastAPI + React on behalf of the signed-in user: Radar, Impact, Approvals, Ask (routes through the agent as the user) | `src/app/backend/main.py`, `src/app/frontend/src/App.tsx` | `06_app`: API responses per screen; Ask via agent -> Genie |
+| 6 | App | FastAPI + React on behalf of the signed-in user: Radar, Impact, Approvals, plus a chat dock on every page that keeps the conversation across pages and sends the page context (routes through the agent as the user) | `src/app/backend/main.py`, `src/app/frontend/src/App.tsx` | `06_app`: API responses per screen; Ask via agent -> Genie |
 
 ## Data flow
 

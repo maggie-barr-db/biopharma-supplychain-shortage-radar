@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, Row } from "./api";
 
-type Tab = "radar" | "impact" | "approvals" | "ask";
+type Tab = "radar" | "impact" | "approvals";
 const ACTIONS = ["REALLOCATE_INVENTORY", "EXPEDITE_ALTERNATE_SOURCE", "QUALIFY_ALTERNATE_SOURCE", "ALLOCATE_DEMAND", "FDA_506C_NOTIFICATION"];
 const num = (v: Row[string] | undefined) => (v === null || v === undefined || v === "" ? null : Number(v));
 const money = (v: Row[string] | undefined) => {
@@ -13,8 +13,8 @@ const money = (v: Row[string] | undefined) => {
 const label = (s: Row[string]) => String(s ?? "").replace(/_/g, " ").toLowerCase();
 
 export default function App() {
-  const initial = (window.location.hash.replace("#", "") || "radar") as Tab;
-  const [tab, setTabState] = useState<Tab>(["radar", "impact", "approvals", "ask"].includes(initial) ? initial : "radar");
+  const initial = (window.location.hash.replace("#", "").split("&")[0] || "radar") as Tab;
+  const [tab, setTabState] = useState<Tab>(["radar", "impact", "approvals"].includes(initial) ? initial : "radar");
   const setTab = (t: Tab) => { setTabState(t); window.location.hash = t; };
   const [me, setMe] = useState<Row | null>(null);
   const [selected, setSelected] = useState<Row | null>(null);
@@ -26,9 +26,9 @@ export default function App() {
       <header>
         <div className="brand"><span className="mark" />BioChain <b>Shortage Radar</b></div>
         <nav>
-          {(["radar", "impact", "approvals", "ask"] as Tab[]).map((t) => (
+          {(["radar", "impact", "approvals"] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-              {{ radar: "Radar", impact: "Impact", approvals: "Approvals", ask: "Ask" }[t]}
+              {{ radar: "Radar", impact: "Impact", approvals: "Approvals" }[t]}
             </button>
           ))}
         </nav>
@@ -45,8 +45,8 @@ export default function App() {
         {tab === "radar" && <Radar onOpen={open} />}
         {tab === "impact" && <Impact d={selected} onPick={setSelected} />}
         {tab === "approvals" && <Approvals me={me} />}
-        {tab === "ask" && <Ask />}
       </main>
+      <ChatDock tab={tab} disruption={selected} />
     </div>
   );
 }
@@ -111,6 +111,11 @@ function Radar({ onOpen }: { onOpen: (d: Row) => void }) {
   );
 }
 
+function Msg({ text }: { text: string }) {
+  const ok = /^(Saved|Action #)/.test(text);
+  return <div className={ok ? "note" : "alert"}>{text.replace(/^Error: /, "")}</div>;
+}
+
 function Tile({ k, v, tone }: { k: string; v: React.ReactNode; tone: "red" | "navy" | "green" }) {
   return <div className={`tile ${tone}`}><div className="tk">{k}</div><div className="tv">{v}</div></div>;
 }
@@ -163,7 +168,7 @@ function Impact({ d, onPick }: { d: Row | null; onPick: (d: Row) => void }) {
           <input placeholder="What to do and why" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           <button className="primary" disabled={!form.sku_id || !form.description} onClick={submit}>Propose</button>
         </div>
-        {msg && <div className="note">{msg}</div>}
+        {msg && <Msg text={msg} />}
       </div>
     </>
   );
@@ -184,7 +189,7 @@ function Approvals({ me }: { me: Row | null }) {
       <div className="eyebrow">Mitigation workflow</div>
       <h1>Proposed and decided mitigations</h1>
       <p className="lede">{me?.can_approve === "true" ? "You can approve. Every decision needs a rationale, and nobody approves their own proposal." : "You can propose; an entitled approver decides."}</p>
-      {msg && <div className="note">{msg}</div>}
+      {msg && <Msg text={msg} />}
       <div className="approvals">
         {rows.map((r) => {
           const id = Number(r.action_id);
@@ -234,41 +239,63 @@ function Markdown({ text }: { text: string }) {
   return <div className="md">{out}</div>;
 }
 
-function Ask() {
+type Msg = { u: string; a?: string; route?: string };
+const saved = <T,>(k: string, d: T): T => { try { return JSON.parse(sessionStorage.getItem(k) ?? "") as T; } catch { return d; } };
+
+function ChatDock({ tab, disruption }: { tab: Tab; disruption: Row | null }) {
+  const [open, setOpen] = useState<boolean>(window.location.hash.includes("chat") || saved("radar-chat-open", false));
+  const [log, setLog] = useState<Msg[]>(saved("radar-chat-log", []));
+  const [session, setSession] = useState<string | undefined>(saved("radar-chat-session", undefined));
   const [q, setQ] = useState("");
-  const [log, setLog] = useState<{ u: string; a?: string; route?: string }[]>([]);
-  const [session, setSession] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  const examples = ["Which products are exposed to the supplier that just received a warning letter, and when do they stock out?",
-    "Which suppliers have an open warning letter or import alert?", "Propose a mitigation for the most at-risk SKU in the current disruption."];
+  useEffect(() => { sessionStorage.setItem("radar-chat-log", JSON.stringify(log)); }, [log]);
+  useEffect(() => { sessionStorage.setItem("radar-chat-open", JSON.stringify(open)); document.body.classList.toggle("dock-open", open); }, [open]);
+  useEffect(() => { if (session) sessionStorage.setItem("radar-chat-session", JSON.stringify(session)); }, [session]);
+  const who = disruption ? `${disruption.vendor_name ?? disruption.vendor_id} (${disruption.disruption_id})` : "";
+  const context = tab === "impact" && disruption ? `Impact page, looking at disruption ${who}` : `${tab} page`;
+  const suggestions: Record<Tab, string[]> = {
+    radar: ["Which products are exposed to the supplier that just received a warning letter, and when do they stock out?",
+            "Which suppliers have an open warning letter or import alert?"],
+    impact: [`Which SKUs in this disruption run out before an alternate source can be qualified?`,
+             `Propose a mitigation for the most at-risk SKU in this disruption.`],
+    approvals: ["Which open purchase orders from single-source suppliers are predicted to be late?",
+                "What did the latest warning letter for this supplier say?"],
+  };
   const send = (question: string) => {
-    setQ(""); setBusy(true); setLog((l) => [...l, { u: question }]);
-    api.ask(question, session)
+    setQ(""); setBusy(true); setOpen(true); setLog((l) => [...l, { u: question }]);
+    api.ask(question, session, context)
       .then((r) => { setSession(r.session_id ?? session);
         const route = r.route.replace("agent:radar-router -> ", "").split(", ").filter((t) => !t.endsWith("_query_result")).map(label).join(" → ");
         setLog((l) => [...l.slice(0, -1), { u: question, a: r.answer, route: `${r.fallback_reason ? "Genie (fallback)" : route} · ${r.seconds}s` }]); })
-      .catch((e) => setLog((l) => [...l.slice(0, -1), { u: question, a: String(e) }]))
+      .catch((e) => setLog((l) => [...l.slice(0, -1), { u: question, a: String(e).replace(/^Error: /, "") }]))
       .finally(() => setBusy(false));
   };
+  const reset = () => { setLog([]); setSession(undefined); sessionStorage.removeItem("radar-chat-session"); };
   return (
     <>
-      <div className="eyebrow">Ask the radar</div>
-      <h1>Questions in plain English, routed to the right agent</h1>
-      <div className="chat">
-        {log.length === 0 && <div className="examples">{examples.map((e) => <button key={e} onClick={() => send(e)}>{e}</button>)}</div>}
-        {log.map((m, i) => (
-          <div key={i}>
-            <div className="bubble user">{m.u}</div>
-            {m.a ? <div className="bubble bot"><Markdown text={m.a} /><div className="route">answered by {m.route}</div></div>
-              : <div className="bubble bot thinking">Routing your question to the right agent...</div>}
-          </div>
-        ))}
-      </div>
-      <div className="askbar">
-        <input value={q} placeholder="Ask about exposure, suppliers or mitigations" onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && q && !busy && send(q)} />
-        <button className="primary" disabled={!q || busy} onClick={() => send(q)}>Ask</button>
-      </div>
+      {!open && <button className="fab" onClick={() => setOpen(true)}><span className="fabdot" />Ask the radar</button>}
+      <aside className={`dock ${open ? "open" : ""}`}>
+        <div className="dockhead">
+          <div><b>Ask the radar</b><div className="ctx">Context: {context}</div></div>
+          <div className="dockbtns"><button className="link" onClick={reset}>New chat</button><button className="x" onClick={() => setOpen(false)} aria-label="Close">×</button></div>
+        </div>
+        <div className="dockbody">
+          {log.length === 0 && <div className="examples">{suggestions[tab].map((e) => <button key={e} onClick={() => send(e)}>{e}</button>)}</div>}
+          {log.map((m, i) => (
+            <div key={i}>
+              <div className="bubble user">{m.u}</div>
+              {m.a ? <div className="bubble bot"><Markdown text={m.a} />{m.route && <div className="route">answered by {m.route}</div>}</div>
+                : <div className="bubble bot thinking">Routing your question to the right agent...</div>}
+            </div>
+          ))}
+          {log.length > 0 && !busy && <div className="followups">{suggestions[tab].map((e) => <button key={e} onClick={() => send(e)}>{e}</button>)}</div>}
+        </div>
+        <div className="askbar">
+          <input value={q} placeholder="Ask about exposure, suppliers or mitigations" onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && q && !busy && send(q)} />
+          <button className="primary" disabled={!q || busy} onClick={() => send(q)}>Ask</button>
+        </div>
+      </aside>
     </>
   );
 }
