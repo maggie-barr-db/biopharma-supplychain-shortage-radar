@@ -11,3 +11,4 @@ src/app/frontend/dist/
 CLAUDE.md
 FEBAR_CONTEXT.md
 package-lock.json
+vite.preview.config.mjs

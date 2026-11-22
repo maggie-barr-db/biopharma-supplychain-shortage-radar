@@ -82,7 +82,8 @@ def disruptions(req: Request):
     w, _, _ = user_ctx(req)
     return sql(w, f"""SELECT d.disruption_id, d.vendor_id, s.vendor_name, d.event_type, d.event_date,
         COUNT(DISTINCT d.sku_id) AS skus, COUNT_IF(d.single_source) AS single_source_skus,
-        MIN(d.projected_stockout_date) AS first_stockout, ROUND(SUM(d.revenue_at_risk), 0) AS revenue_at_risk
+        MIN(d.projected_stockout_date) AS first_stockout, ROUND(MIN(d.cover_days_without_vendor), 0) AS first_stockout_days,
+        COUNT_IF(d.supply_gap_days > 0) AS skus_with_gap, ROUND(SUM(d.revenue_at_risk), 0) AS revenue_at_risk
         FROM {CATALOG}.gold.disruption_impact d LEFT JOIN {CATALOG}.gold.supplier_risk s USING (vendor_id)
         GROUP BY ALL ORDER BY revenue_at_risk DESC NULLS LAST, first_stockout""")
 
@@ -100,9 +101,11 @@ def disruption(disruption_id: str, req: Request):
 def actions(req: Request):
     _, email, _ = user_ctx(req)
     with pg(email) as conn:
-        cur = conn.execute("""SELECT action_id, disruption_id, sku_id, region, action_type, description, est_revenue_protected,
-            proposed_by, proposed_source, on_behalf_of, proposed_at, status, decided_by, decided_at, decision_rationale
-            FROM decisions.mitigation_action ORDER BY action_id DESC LIMIT 100""")
+        cur = conn.execute("""SELECT a.action_id, a.disruption_id, a.sku_id, a.region, a.action_type, a.description,
+            a.est_revenue_protected, a.proposed_by, p.persona AS proposed_by_persona, a.proposed_source, a.on_behalf_of,
+            a.proposed_at, a.status, a.decided_by, a.decided_at, a.decision_rationale
+            FROM decisions.mitigation_action a LEFT JOIN ops.user_entitlement p ON p.principal = a.proposed_by
+            ORDER BY a.action_id DESC LIMIT 100""")
         cols = [d.name for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
