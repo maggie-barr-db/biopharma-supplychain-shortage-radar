@@ -189,7 +189,11 @@ function Impact({ d, onPick }: { d: Row | null; onPick: (d: Row) => void }) {
             ))}
           </div>
           <div className="toolbar">
-            <div className="legend"><span><i className="sw red" />runs out before a new supplier is ready</span><span><i className="sw navy" />covered until then</span><span><i className="sw line" />new single-source supplier ready ~{fmt(view.ready)} (180 days)</span></div>
+            <div className="legend">
+              <span><i className="sw red" />runs out before a new supplier could be ready (~{fmt(view.ready)}, 180 days to qualify)</span>
+              {view.groups.some((g) => g.xs.some((x) => x.gap <= 0)) && <span><i className="sw navy" />covered (stock or a backup supplier lasts)</span>}
+              <span className="hint">Click a SKU to propose a mitigation</span>
+            </div>
             <div className="seg">
               <button className={sort === "urgency" ? "on" : ""} onClick={() => setSort("urgency")}>Most urgent</button>
               <button className={sort === "revenue" ? "on" : ""} disabled={!view.revVisible} title={view.revVisible ? "" : "Revenue is not visible for your role"} onClick={() => setSort("revenue")}>Most revenue at risk</button>
@@ -201,6 +205,7 @@ function Impact({ d, onPick }: { d: Row | null; onPick: (d: Row) => void }) {
               <div className="axis-track">
                 <span className="tick today" style={{ left: "0%" }}>today</span>
                 {view.months.filter((m) => view.pos(m) > 6).map((m) => <span key={m.toISOString()} className="tick" style={{ left: `${view.pos(m)}%` }}>{m.toLocaleDateString("en-US", { month: "short" })}</span>)}
+                <span className="flag" style={{ left: `${view.pos(view.ready)}%` }}>new supplier ~{fmt(view.ready)}</span>
               </div>
               <div />
             </div>
@@ -214,15 +219,15 @@ function Impact({ d, onPick }: { d: Row | null; onPick: (d: Row) => void }) {
                   <span className="dm">first stockout <b className={g.short ? "red" : ""}>{fmt(g.first)}</b></span>
                   {g.rar !== null && <span className="dm">{money(g.rar)} at risk</span>}
                 </button>
-                {isOpen(g.drug, i) && g.xs.map((x) => (
-                  <div className={`skurow ${form.sku_id === x.r.sku_id ? "sel" : ""}`} key={String(x.r.sku_id)} onClick={() => setForm({ ...form, sku_id: String(x.r.sku_id) })}>
+                {isOpen(g.drug, i) && g.xs.map((x) => (<div key={String(x.r.sku_id)}>
+                  <div className={`skurow ${form.sku_id === x.r.sku_id ? "sel" : ""}`} onClick={() => { setMsg(null); setForm({ ...form, sku_id: form.sku_id === x.r.sku_id ? "" : String(x.r.sku_id) }); }}>
                     <div className="sku">
                       <b>{String(x.r.strength)} · {String(x.r.pack)}</b>
                       <span><span className="rg">{String(x.r.region)}</span> {String(x.r.sku_id)} · {x.single ? "single-source" : "backup supplier approved"}</span>
                     </div>
                     <div className="axis-track bars">
                       {view.months.map((m) => <i key={m.toISOString()} className="grid" style={{ left: `${view.pos(m)}%` }} />)}
-                      <i className="ready" style={{ left: `${view.pos(view.ready)}%` }} />
+                      <i className="guide" style={{ left: `${view.pos(view.ready)}%` }} />
                       <i className={`bar ${x.gap > 0 ? "red" : "navy"}`} style={{ width: `${view.pos(x.out)}%` }} />
                     </div>
                     <div className="sval">
@@ -230,27 +235,26 @@ function Impact({ d, onPick }: { d: Row | null; onPick: (d: Row) => void }) {
                       <span>{x.gap > 0 ? `${Math.round(x.gap)} days short` : "covered"}{x.rar !== null && x.gap > 0 ? ` · ${money(x.r.revenue_at_risk) as unknown as string}` : ""}</span>
                     </div>
                   </div>
-                ))}
+                  {form.sku_id === x.r.sku_id && (
+                    <div className="inline-propose" onClick={(e) => e.stopPropagation()}>
+                      <div className="ip-title">Propose a mitigation for {String(x.r.drug)} {String(x.r.strength)} · {String(x.r.pack)} · {String(x.r.region)}</div>
+                      <div className="form">
+                        <select value={form.action_type} onChange={(e) => setForm({ ...form, action_type: e.target.value })}>
+                          {ACTIONS.map((a) => <option key={a} value={a}>{label(a)}</option>)}
+                        </select>
+                        <input autoFocus placeholder="What to do and why" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                        <button className="primary" disabled={!form.description} onClick={submit}>Propose</button>
+                        <button className="ghost" onClick={() => setForm({ ...form, sku_id: "" })}>Cancel</button>
+                      </div>
+                      {msg && <Msg text={msg} />}
+                    </div>
+                  )}
+                </div>))}
               </div>
             ))}
           </div>
         </>
       )}
-      <div className="panel">
-        <div className="section-title">Propose a mitigation <span>click a SKU above to select it</span></div>
-        <div className="form">
-          <select value={form.sku_id} onChange={(e) => setForm({ ...form, sku_id: e.target.value })}>
-            <option value="">Select SKU</option>
-            {rows.map((r) => <option key={String(r.sku_id)} value={String(r.sku_id)}>{String(r.drug)} {String(r.strength)} · {String(r.pack)} · {String(r.region)}</option>)}
-          </select>
-          <select value={form.action_type} onChange={(e) => setForm({ ...form, action_type: e.target.value })}>
-            {ACTIONS.map((a) => <option key={a} value={a}>{label(a)}</option>)}
-          </select>
-          <input placeholder="What to do and why" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          <button className="primary" disabled={!form.sku_id || !form.description} onClick={submit}>Propose</button>
-        </div>
-        {msg && <Msg text={msg} />}
-      </div>
     </>
   );
 }

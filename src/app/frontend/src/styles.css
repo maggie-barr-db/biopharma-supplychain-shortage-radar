@@ -99,8 +99,8 @@ body.dock-open main { margin-right: 440px; max-width: none; transition: margin .
 .seg button { border: 0; background: none; font: inherit; font-size: 13px; padding: 7px 12px; cursor: pointer; color: var(--slate); } .seg button.on { background: var(--navy); color: #fff; } .seg button:disabled { opacity: .4; cursor: default; }
 .timeline-card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 18px 12px; }
 .axis, .skurow { display: grid; grid-template-columns: 230px 1fr 170px; gap: 16px; align-items: center; }
-.axis { height: 30px; border-bottom: 1px solid var(--oat2); } .axis-track { position: relative; height: 100%; }
-.tick { position: absolute; top: 8px; transform: translateX(-50%); font-family: "DM Mono", monospace; font-size: 11px; color: var(--slate); } .tick.today { transform: none; color: var(--coral); }
+.axis { height: 48px; border-bottom: 1px solid var(--oat2); } .axis-track { position: relative; height: 100%; }
+.tick { position: absolute; top: 26px; transform: translateX(-50%); font-family: "DM Mono", monospace; font-size: 11px; color: var(--slate); } .tick.today { transform: none; color: var(--coral); }
 .drug { border-bottom: 1px solid var(--oat2); } .drug:last-child { border-bottom: 0; }
 .drughead { width: 100%; display: flex; align-items: baseline; gap: 18px; background: none; border: 0; font: inherit; color: inherit; padding: 12px 0 8px; cursor: pointer; text-align: left; }
 .caret { color: var(--coral); width: 12px; } .dn { font-size: 17px; font-weight: 700; text-transform: capitalize; min-width: 120px; } .dm { font-size: 13px; color: var(--slate); } .dm b { color: var(--navy); }
@@ -110,3 +110,9 @@ body.dock-open main { margin-right: 440px; max-width: none; transition: margin .
 .bars { height: 16px; } .bars .bar { position: absolute; left: 0; top: 2px; height: 12px; border-radius: 0 6px 6px 0; } .bars .bar.red { background: var(--lava); } .bars .bar.navy { background: var(--navy2); }
 .bars .grid { position: absolute; top: -8px; bottom: -8px; width: 1px; background: var(--oat2); } .bars .ready { position: absolute; top: -9px; bottom: -9px; width: 2px; background: var(--navy); z-index: 1; }
 .sval b { display: block; font-size: 13px; } .sval span { font-size: 12px; color: var(--slate); }
+
+.flag { position: absolute; top: 2px; transform: translateX(-50%); font-family: "DM Mono", monospace; font-size: 11px; color: #fff; background: var(--navy); border-radius: 4px; padding: 1px 6px; white-space: nowrap; z-index: 2; }
+.bars .guide { position: absolute; top: -9px; bottom: -9px; border-left: 1px dashed #9fb0b6; }
+.legend .hint { color: var(--coral); }
+.inline-propose { margin: 2px 0 10px 0; padding: 12px 14px; background: #fff6f3; border: 1px solid #ffd2c8; border-radius: 8px; }
+.ip-title { font-weight: 700; font-size: 14px; text-transform: capitalize; } .inline-propose .form { margin-top: 8px; }
